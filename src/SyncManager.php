@@ -72,6 +72,7 @@ class SyncManager
             content: $mapped['content'],
             textContent: $mapped['textContent'],
             tags: $mapped['tags'],
+            updatedAt: $mapped['updatedAt'],
         );
 
         // Check if record exists (get-then-create/update pattern)

@@ -53,7 +53,7 @@ class EntryMapper
      * (minus `site`, which the SyncManager provides from the publication AT-URI).
      *
      * @param Entry $entry
-     * @return array{title: string, content: ?array, textContent: ?string, path: ?string, description: ?string, publishedAt: string, tags: ?array}
+     * @return array{title: string, content: ?array, textContent: ?string, path: ?string, description: ?string, publishedAt: string, tags: ?array, updatedAt: ?string}
      */
     public function map(Entry $entry): array
     {
@@ -67,6 +67,7 @@ class EntryMapper
             'description' => $this->resolveDescription($entry, $blueprint),
             'publishedAt' => $this->resolvePublishedAt($entry, $blueprint),
             'tags' => $this->resolveTags($entry, $blueprint),
+            'updatedAt' => $this->resolveUpdatedAt($entry),
         ];
     }
 
@@ -112,10 +113,10 @@ class EntryMapper
 
         return [
             '$type' => 'at.markpub.markdown',
+            'flavor' => $flavor,
             'text' => [
                 '$type' => 'at.markpub.text',
                 'markdown' => $markdown,
-                'flavor' => $flavor,
             ],
         ];
     }
@@ -219,6 +220,26 @@ class EntryMapper
         }
 
         return null;
+    }
+
+    /**
+     * Resolve the entry's last-modified timestamp as ISO 8601 for updatedAt.
+     *
+     * Uses $entry->lastModified() which is confirmed in the Statamic 6 Entry API.
+     * Returns null if the entry has no last-modified date.
+     */
+    private function resolveUpdatedAt(Entry $entry): ?string
+    {
+        $lastModified = $entry->lastModified();
+        if ($lastModified === null) {
+            return null;
+        }
+
+        if ($lastModified instanceof \Carbon\Carbon) {
+            return $lastModified->toIso8601String();
+        }
+
+        return $this->toIso8601($lastModified);
     }
 
     /**
