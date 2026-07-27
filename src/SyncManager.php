@@ -142,11 +142,23 @@ class SyncManager
      *
      * Format: {namespace}-{entryId}
      * Default namespace: "statamic" (configurable in CP settings)
+     *
+     * @throws \InvalidArgumentException If the namespace contains invalid rkey characters
      */
     public function deriveRkey(Entry $entry): string
     {
         $settings = Addon::get('publish-php/statamic-standard-site')->settings();
         $namespace = $settings->get('rkey_namespace', 'statamic');
+
+        // Validate namespace against AT Protocol rkey syntax
+        // Allowed characters: A-Za-z0-9 . - _ : ~
+        // The '-' separator and entryId (which contains characters outside TID's base32 [a-z2-7])
+        // ensures the resulting rkey cannot collide with TID-generated rkeys.
+        if (!preg_match('/^[A-Za-z0-9.\-_:~]+$/', $namespace)) {
+            throw new \InvalidArgumentException(
+                "Invalid rkey namespace '{$namespace}'. Allowed characters: letters, digits, period, dash, underscore, colon, tilde."
+            );
+        }
 
         return $namespace . '-' . $entry->id();
     }
