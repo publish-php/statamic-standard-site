@@ -1,5 +1,5 @@
 import PublicationManager from './components/PublicationManager.vue';
 
 Statamic.booting(() => {
-    Statamic.$components.register('publication-manager', PublicationManager);
+    Statamic.$components.register('publication-manager-fieldtype', PublicationManager);
 });
