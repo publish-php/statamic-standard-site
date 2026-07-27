@@ -14,6 +14,12 @@ Built on top of [`publish-php/atproto-standard-site`](https://github.com/publish
 - PHP 8.3+
 - A Bluesky/AT Protocol account with an [app password](https://bsky.app/settings/app-passwords)
 
+## Limitations
+
+- **Multi-site / localization:** Only the origin entry is synced to the AT Protocol. Localized entries are not synced independently, and deleting the origin entry does not cascade to delete localized AT Protocol records. Multi-site support is planned for a future release.
+- **Drafts:** Only published entries are synced. The AT Protocol is currently 100% public — drafts are never published to the PDS.
+- **Content source:** The content field is determined by convention (the field with handle `content`). Per-entry content override is not supported at this time.
+
 ## Installation
 
 ```bash

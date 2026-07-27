@@ -35,7 +35,6 @@ class EntryMapper
      */
     private const OVERRIDES = [
         'title' => 'standard_site_title',
-        'content' => 'standard_site_content',
         'description' => 'standard_site_description',
         'published_at' => 'standard_site_published_at',
         'path' => 'standard_site_path',
@@ -83,23 +82,13 @@ class EntryMapper
 
     private function resolveContent(Entry $entry, Blueprint $blueprint): ?array
     {
-        $override = self::OVERRIDES['content'];
-        $contentHandle = null;
-
-        if ($blueprint->hasField($override) && $entry->get($override)) {
-            $contentHandle = $override;
-        } else {
-            // Convention: field with handle 'content'
-            if ($blueprint->hasField('content')) {
-                $contentHandle = 'content';
-            }
-        }
-
-        if ($contentHandle === null) {
+        // Convention only: field with handle 'content'
+        // Content is not overridable per-entry (duplicating content would be error-prone)
+        if (! $blueprint->hasField('content')) {
             return null;
         }
 
-        $value = $entry->get($contentHandle);
+        $value = $entry->get('content');
         $markdown = $this->converter->toMarkdown($value);
 
         if ($markdown === '') {
@@ -107,7 +96,7 @@ class EntryMapper
         }
 
         // Determine flavor based on field type
-        $field = $blueprint->field($contentHandle);
+        $field = $blueprint->field('content');
         $fieldtype = $field?->type() ?? 'markdown';
         $flavor = $fieldtype === 'bard' ? 'commonmark' : 'gfm';
 
@@ -123,22 +112,12 @@ class EntryMapper
 
     private function resolveTextContent(Entry $entry, Blueprint $blueprint): ?string
     {
-        $override = self::OVERRIDES['content'];
-        $contentHandle = null;
-
-        if ($blueprint->hasField($override) && $entry->get($override)) {
-            $contentHandle = $override;
-        } else {
-            if ($blueprint->hasField('content')) {
-                $contentHandle = 'content';
-            }
-        }
-
-        if ($contentHandle === null) {
+        // Convention only: field with handle 'content'
+        if (! $blueprint->hasField('content')) {
             return null;
         }
 
-        $value = $entry->get($contentHandle);
+        $value = $entry->get('content');
         $text = $this->converter->toTextContent($value);
 
         return $text !== '' ? $text : null;

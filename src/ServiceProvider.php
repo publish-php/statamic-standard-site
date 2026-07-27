@@ -123,5 +123,8 @@ class ServiceProvider extends AddonServiceProvider
     public function register(): void
     {
         $this->app->singleton(ClientManager::class);
+        $this->app->singleton(ContentConverter::class);
+        $this->app->singleton(EntryMapper::class);
+        $this->app->singleton(SyncManager::class);
     }
 }
