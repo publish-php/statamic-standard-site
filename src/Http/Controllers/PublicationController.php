@@ -11,12 +11,14 @@ use PublishPhp\AtprotoStandardSite\Exception\ApiErrorException;
 use PublishPhp\AtprotoStandardSite\Exception\AuthenticationException;
 use PublishPhp\AtprotoStandardSite\Model\Publication;
 use PublishPhp\AtprotoStandardSite\Service\Record;
+use Statamic\Facades\Statamic;
 
 /**
  * Handles the publication management actions from the CP settings page.
  *
  * All actions are explicitly user-triggered — no hidden/automatic API calls.
- * The user enters credentials, clicks "Check" or "Create", and sees results.
+ * Credentials are read from the addon's config (populated by the CP settings
+ * page) so they never round-trip through the browser.
  */
 class PublicationController extends Controller
 {
@@ -29,16 +31,14 @@ class PublicationController extends Controller
     public function check(Request $request)
     {
         $validated = $request->validate([
-            'identifier' => ['required', 'string'],
-            'app_password' => ['required', 'string'],
+            'identifier' => ['nullable', 'string'],
+            'app_password' => ['nullable', 'string'],
             'pds_host' => ['nullable', 'string'],
         ]);
 
         try {
             $client = $this->createClient(
-                $validated['identifier'],
-                $validated['app_password'],
-                $validated['pds_host'] ?? Client::DEFAULT_PDS,
+                $validated,
             );
 
             $did = $client->getDid();
@@ -76,6 +76,11 @@ class PublicationController extends Controller
                 'success' => false,
                 'error' => 'API error: ' . $e->getMessage(),
             ], 502);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 422);
         }
     }
 
@@ -88,8 +93,8 @@ class PublicationController extends Controller
     public function create(Request $request)
     {
         $validated = $request->validate([
-            'identifier' => ['required', 'string'],
-            'app_password' => ['required', 'string'],
+            'identifier' => ['nullable', 'string'],
+            'app_password' => ['nullable', 'string'],
             'pds_host' => ['nullable', 'string'],
             'name' => ['required', 'string', 'max:500'],
             'url' => ['required', 'string', 'url'],
@@ -98,9 +103,7 @@ class PublicationController extends Controller
 
         try {
             $client = $this->createClient(
-                $validated['identifier'],
-                $validated['app_password'],
-                $validated['pds_host'] ?? Client::DEFAULT_PDS,
+                $validated,
             );
 
             $records = new Record($client);
@@ -124,11 +127,26 @@ class PublicationController extends Controller
                 'success' => false,
                 'error' => 'API error: ' . $e->getMessage(),
             ], 502);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 422);
         }
     }
 
-    private function createClient(string $identifier, string $appPassword, string $pdsHost): Client
+    private function createClient(array $validated): Client
     {
+        $identifier = $validated['identifier'] ?? Statamic::get('standard-site.identifier');
+        $appPassword = $validated['app_password'] ?? Statamic::get('standard-site.app_password');
+        $pdsHost = $validated['pds_host'] ?? Statamic::get('standard-site.pds_host', Client::DEFAULT_PDS);
+
+        if (! $identifier || ! $appPassword) {
+            throw new \RuntimeException(
+                'Standard Site credentials not configured. Set them in Settings → Standard Site.'
+            );
+        }
+
         return new Client($identifier, $appPassword, pdsHost: $pdsHost);
     }
 }
