@@ -13,8 +13,16 @@ class ServiceProvider extends AddonServiceProvider
         'web' => __DIR__ . '/../routes/web.php',
     ];
 
-    protected $scripts = [
-        __DIR__ . '/../resources/js/publication-manager.js',
+    protected $fieldtypes = [
+        \PublishPhp\StatamicStandardSite\Fieldtypes\PublicationManagerFieldtype::class,
+    ];
+
+    protected $vite = [
+        'input' => [
+            'resources/js/addon.js',
+            'resources/css/addon.css',
+        ],
+        'publicDirectory' => 'resources/dist',
     ];
 
     public function bootAddon(): void
@@ -74,30 +82,9 @@ class ServiceProvider extends AddonServiceProvider
                                 [
                                     'handle' => 'publication_uri',
                                     'field' => [
-                                        'type' => 'textarea',
-                                        'display' => 'Publication AT-URI',
-                                        'instructions' => 'The AT-URI of your selected publication record. Populated by the actions below.',
-                                        'read_only' => true,
-                                        'rows' => 2,
-                                    ],
-                                ],
-                                [
-                                    'handle' => 'publication_name',
-                                    'field' => [
-                                        'type' => 'text',
-                                        'display' => 'Publication Name',
-                                        'instructions' => 'Display name for your publication. Used when creating a new record.',
-                                        'width' => 50,
-                                    ],
-                                ],
-                                [
-                                    'handle' => 'publication_description',
-                                    'field' => [
-                                        'type' => 'textarea',
-                                        'display' => 'Publication Description',
-                                        'instructions' => 'Brief description. Used when creating a new record.',
-                                        'width' => 50,
-                                        'rows' => 2,
+                                        'type' => 'publication-manager',
+                                        'display' => 'Publication Record',
+                                        'instructions' => 'Select an existing publication or create a new one.',
                                     ],
                                 ],
                             ],
