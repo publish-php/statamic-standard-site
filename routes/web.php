@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Statamic\Facades\Addon;
 
 /**
  * Serves the publication verification endpoint.
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Route;
  * @see https://standard.site/docs/verification/
  */
 Route::get('/.well-known/site.standard.publication', function () {
-    $uri = config('statamic.standard-site.publication_uri');
+    $uri = Addon::get('publish-php/statamic-standard-site')->settings()->get('publication_uri');
 
     if (! $uri) {
         return response('No publication record configured.', 404)
