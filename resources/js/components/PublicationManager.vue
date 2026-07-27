@@ -1,21 +1,24 @@
 <template>
-    <div class="publication-manager">
+    <div class="space-y-4">
         <!-- Current status -->
-        <div v-if="value" class="publication-manager-status">
-            <p class="publication-manager-label">{{ __('Current Publication') }}</p>
-            <code class="publication-manager-uri">{{ value }}</code>
+        <div
+            v-if="props.value"
+            class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800"
+        >
+            <p class="text-sm font-semibold mb-2">{{ __('Current Publication') }}</p>
+            <code class="block text-xs break-all">{{ props.value }}</code>
         </div>
 
         <!-- Action buttons -->
-        <div class="publication-manager-actions">
-            <ui-button
+        <div class="flex gap-2">
+            <Button
                 variant="default"
                 :text="checking ? __('Checking...') : __('Check for existing publications')"
                 :loading="checking"
                 :disabled="isReadOnly"
                 @click="checkPublications"
             />
-            <ui-button
+            <Button
                 variant="primary"
                 :text="__('Create new publication')"
                 :disabled="isReadOnly"
@@ -24,185 +27,212 @@
         </div>
 
         <!-- Create form (collapsible) -->
-        <div v-if="showCreateForm" class="publication-manager-form">
-            <p class="publication-manager-label">{{ __('Create New Publication') }}</p>
-            <div class="publication-manager-fields">
-                <div class="publication-manager-field">
-                    <label class="publication-manager-field-label">{{ __('Publication Name') }}</label>
-                    <ui-input
-                        v-model="createForm.name"
-                        :placeholder="__('My Blog')"
-                        :readonly="isReadOnly"
-                    />
-                </div>
-                <div class="publication-manager-field">
-                    <label class="publication-manager-field-label">{{ __('Publication URL') }}</label>
-                    <ui-input
-                        v-model="createForm.url"
-                        :placeholder="__('https://example.com')"
-                        :readonly="isReadOnly"
-                    />
-                </div>
-                <div class="publication-manager-field">
-                    <label class="publication-manager-field-label">{{ __('Description (optional)') }}</label>
-                    <ui-textarea
-                        v-model="createForm.description"
-                        :placeholder="__('A brief description')"
-                        :readonly="isReadOnly"
-                    />
-                </div>
-                <ui-button
-                    variant="primary"
-                    :text="creating ? __('Creating...') : __('Create Publication Record')"
-                    :loading="creating"
-                    :disabled="isReadOnly"
-                    @click="createPublication"
+        <div
+            v-if="showCreateForm"
+            class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 space-y-3"
+        >
+            <p class="text-sm font-semibold">{{ __('Create New Publication') }}</p>
+
+            <div class="space-y-1">
+                <label class="text-sm font-medium">{{ __('Publication Name') }}</label>
+                <Input
+                    v-model="createForm.name"
+                    :placeholder="__('My Blog')"
+                    :read-only="isReadOnly"
                 />
             </div>
+
+            <div class="space-y-1">
+                <label class="text-sm font-medium">{{ __('Publication URL') }}</label>
+                <Input
+                    v-model="createForm.url"
+                    :placeholder="__('https://example.com')"
+                    :read-only="isReadOnly"
+                />
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-sm font-medium">{{ __('Description (optional)') }}</label>
+                <Textarea
+                    v-model="createForm.description"
+                    :placeholder="__('A brief description')"
+                    :read-only="isReadOnly"
+                    :rows="3"
+                />
+            </div>
+
+            <Button
+                variant="primary"
+                :text="creating ? __('Creating...') : __('Create Publication Record')"
+                :loading="creating"
+                :disabled="isReadOnly"
+                @click="createPublication"
+            />
         </div>
 
         <!-- Error message -->
-        <ui-error-message v-if="error" :text="error" class="publication-manager-message" />
+        <ErrorMessage v-if="error" :text="error" />
 
         <!-- Success message -->
-        <p v-if="success" class="publication-manager-success">{{ success }}</p>
+        <p v-if="success" class="text-sm font-medium text-green-700 dark:text-green-400">
+            {{ success }}
+        </p>
 
         <!-- Check results -->
-        <div v-if="publications.length > 0" class="publication-manager-results">
-            <p class="publication-manager-label">
+        <div v-if="publications.length > 0" class="space-y-2">
+            <p class="text-sm font-semibold">
                 {{ __('Found :count publication(s):', { count: publications.length }) }}
             </p>
-            <div
+
+            <label
                 v-for="pub in publications"
                 :key="pub.uri"
-                class="publication-manager-publication"
-                :class="{ 'is-selected': selectedUri === pub.uri }"
-                @click="selectPublication(pub.uri)"
+                class="flex items-start gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-md cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+                :class="{
+                    'border-primary bg-primary/5 dark:border-primary dark:bg-primary/10':
+                        selectedUri === pub.uri,
+                }"
             >
-                <input type="radio" :value="pub.uri" v-model="selectedUri" :disabled="isReadOnly" />
-                <div class="publication-manager-publication-details">
-                    <strong>{{ pub.name }}</strong>
-                    <span class="publication-manager-publication-url">{{ pub.url }}</span>
-                    <code class="publication-manager-publication-uri">{{ pub.uri }}</code>
+                <input
+                    type="radio"
+                    :value="pub.uri"
+                    v-model="selectedUri"
+                    :disabled="isReadOnly"
+                    class="mt-0.5"
+                    @change="selectPublication(pub.uri)"
+                />
+                <div class="flex flex-col gap-1">
+                    <strong class="text-sm">{{ pub.name }}</strong>
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{ pub.url }}</span>
+                    <code class="text-xs text-gray-400 dark:text-gray-500 break-all">{{ pub.uri }}</code>
                 </div>
-            </div>
+            </label>
         </div>
 
-        <p v-if="checked && publications.length === 0" class="publication-manager-empty">
+        <p v-if="checked && publications.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
             {{ __('No publication records found. Create one above.') }}
         </p>
     </div>
 </template>
 
-<script>
-import { FieldtypeMixin } from '@statamic/cms';
+<script setup>
+import { ref, reactive, watch } from 'vue';
+import { Fieldtype } from '@statamic/cms';
+import { Button, Input, Textarea, ErrorMessage } from '@statamic/cms/ui';
 
-export default {
-    mixins: [FieldtypeMixin],
+const emit = defineEmits(Fieldtype.emits);
+const props = defineProps(Fieldtype.props);
+const { isReadOnly, update, expose } = Fieldtype.use(emit, props);
+defineExpose(expose);
 
-    data() {
-        return {
-            checking: false,
-            creating: false,
-            error: null,
-            success: null,
-            publications: [],
-            checked: false,
-            selectedUri: null,
-            showCreateForm: false,
-            createForm: {
-                name: '',
-                url: window.location.origin,
-                description: '',
-            },
+// Local state
+const checking = ref(false);
+const creating = ref(false);
+const error = ref(null);
+const success = ref(null);
+const publications = ref([]);
+const checked = ref(false);
+const selectedUri = ref(null);
+const showCreateForm = ref(false);
+
+const createForm = reactive({
+    name: '',
+    url: window.location.origin,
+    description: '',
+});
+
+// Initialize selectedUri from current value
+selectedUri.value = props.value;
+
+// Keep selectedUri in sync when the field value changes externally
+watch(
+    () => props.value,
+    (val) => {
+        selectedUri.value = val;
+    },
+);
+
+// Methods
+function handleError(err) {
+    if (err.response?.status === 419) {
+        error.value = __('Session expired. Please refresh the page.');
+    } else {
+        error.value =
+            err.response?.data?.error ||
+            err.response?.data?.message ||
+            __('An error occurred');
+    }
+}
+
+async function checkPublications() {
+    checking.value = true;
+    error.value = null;
+    success.value = null;
+    publications.value = [];
+    checked.value = false;
+
+    try {
+        const response = await Statamic.$axios.post('/cp/standard-site/publication/check');
+
+        if (response.data.success) {
+            publications.value = response.data.publications || [];
+            checked.value = true;
+            if (publications.value.length === 0) {
+                success.value = __('No publications found for DID :did', {
+                    did: response.data.did,
+                });
+            }
+        } else {
+            error.value = response.data.error || __('Check failed');
+        }
+    } catch (err) {
+        handleError(err);
+    } finally {
+        checking.value = false;
+    }
+}
+
+async function createPublication() {
+    if (!createForm.name) {
+        error.value = __('Please enter a publication name');
+        return;
+    }
+
+    creating.value = true;
+    error.value = null;
+    success.value = null;
+
+    try {
+        const payload = {
+            name: createForm.name,
+            url: createForm.url,
+            description: createForm.description || null,
         };
-    },
 
-    watch: {
-        value(val) {
-            this.selectedUri = val;
-        },
-    },
+        const response = await Statamic.$axios.post(
+            '/cp/standard-site/publication/create',
+            payload,
+        );
 
-    created() {
-        this.selectedUri = this.value;
-    },
+        if (response.data.success) {
+            update(response.data.uri);
+            selectedUri.value = response.data.uri;
+            success.value = __('Publication created: :uri', { uri: response.data.uri });
+            showCreateForm.value = false;
+        } else {
+            error.value = response.data.error || __('Create failed');
+        }
+    } catch (err) {
+        handleError(err);
+    } finally {
+        creating.value = false;
+    }
+}
 
-    methods: {
-        async checkPublications() {
-            this.checking = true;
-            this.error = null;
-            this.success = null;
-            this.publications = [];
-            this.checked = false;
-
-            try {
-                const response = await Statamic.$axios.post('/cp/standard-site/publication/check');
-
-                if (response.data.success) {
-                    this.publications = response.data.publications || [];
-                    this.checked = true;
-                    if (this.publications.length === 0) {
-                        this.success = __('No publications found for DID :did', { did: response.data.did });
-                    }
-                } else {
-                    this.error = response.data.error || __('Check failed');
-                }
-            } catch (err) {
-                this.handleError(err);
-            } finally {
-                this.checking = false;
-            }
-        },
-
-        async createPublication() {
-            if (!this.createForm.name) {
-                this.error = __('Please enter a publication name');
-                return;
-            }
-
-            this.creating = true;
-            this.error = null;
-            this.success = null;
-
-            try {
-                const payload = {
-                    name: this.createForm.name,
-                    url: this.createForm.url,
-                    description: this.createForm.description || null,
-                };
-
-                const response = await Statamic.$axios.post('/cp/standard-site/publication/create', payload);
-
-                if (response.data.success) {
-                    this.update(response.data.uri);
-                    this.selectedUri = response.data.uri;
-                    this.success = __('Publication created: :uri', { uri: response.data.uri });
-                    this.showCreateForm = false;
-                } else {
-                    this.error = response.data.error || __('Create failed');
-                }
-            } catch (err) {
-                this.handleError(err);
-            } finally {
-                this.creating = false;
-            }
-        },
-
-        selectPublication(uri) {
-            if (this.isReadOnly) return;
-            this.selectedUri = uri;
-            this.update(uri);
-            this.success = __('Selected: :uri', { uri });
-        },
-
-        handleError(err) {
-            if (err.response?.status === 419) {
-                this.error = __('Session expired. Please refresh the page.');
-            } else {
-                this.error = err.response?.data?.error || err.response?.data?.message || __('An error occurred');
-            }
-        },
-    },
-};
+function selectPublication(uri) {
+    if (isReadOnly.value) return;
+    selectedUri.value = uri;
+    update(uri);
+    success.value = __('Selected: :uri', { uri });
+}
 </script>
