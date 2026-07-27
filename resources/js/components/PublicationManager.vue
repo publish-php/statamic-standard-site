@@ -116,7 +116,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, getCurrentInstance } from 'vue';
 import { Fieldtype } from '@statamic/cms';
 import { Button, Input, Textarea, ErrorMessage } from '@statamic/cms/ui';
 
@@ -124,6 +124,8 @@ const emit = defineEmits(Fieldtype.emits);
 const props = defineProps(Fieldtype.props);
 const { isReadOnly, update, expose } = Fieldtype.use(emit, props);
 defineExpose(expose);
+
+const { $axios } = getCurrentInstance().appContext.config.globalProperties;
 
 // Local state
 const checking = ref(false);
@@ -172,7 +174,7 @@ async function checkPublications() {
     checked.value = false;
 
     try {
-        const response = await Statamic.$axios.post('/cp/standard-site/publication/check');
+        const response = await $axios.post('/cp/standard-site/publication/check');
 
         if (response.data.success) {
             publications.value = response.data.publications || [];
@@ -209,7 +211,7 @@ async function createPublication() {
             description: createForm.description || null,
         };
 
-        const response = await Statamic.$axios.post(
+        const response = await $axios.post(
             '/cp/standard-site/publication/create',
             payload,
         );
