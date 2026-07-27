@@ -11,7 +11,7 @@ use PublishPhp\AtprotoStandardSite\Exception\ApiErrorException;
 use PublishPhp\AtprotoStandardSite\Exception\AuthenticationException;
 use PublishPhp\AtprotoStandardSite\Model\Publication;
 use PublishPhp\AtprotoStandardSite\Service\Record;
-use Statamic\Facades\Statamic;
+use Statamic\Facades\Addon;
 
 /**
  * Handles the publication management actions from the CP settings page.
@@ -137,9 +137,11 @@ class PublicationController extends Controller
 
     private function createClient(array $validated): Client
     {
-        $identifier = $validated['identifier'] ?? Statamic::get('standard-site.identifier');
-        $appPassword = $validated['app_password'] ?? Statamic::get('standard-site.app_password');
-        $pdsHost = $validated['pds_host'] ?? Statamic::get('standard-site.pds_host', Client::DEFAULT_PDS);
+        $settings = Addon::get('publish-php/statamic-standard-site')->settings();
+
+        $identifier = $validated['identifier'] ?? $settings->get('identifier');
+        $appPassword = $validated['app_password'] ?? $settings->get('app_password');
+        $pdsHost = $validated['pds_host'] ?? $settings->get('pds_host', Client::DEFAULT_PDS);
 
         if (! $identifier || ! $appPassword) {
             throw new \RuntimeException(

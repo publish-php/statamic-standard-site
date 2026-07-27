@@ -6,7 +6,7 @@ namespace PublishPhp\StatamicStandardSite;
 
 use PublishPhp\AtprotoStandardSite\Client;
 use PublishPhp\AtprotoStandardSite\Exception\AuthenticationException;
-use Statamic\Facades\Statamic;
+use Statamic\Facades\Addon;
 
 /**
  * Centralized factory for the Layer 1 AT Protocol Client.
@@ -25,9 +25,11 @@ class ClientManager
      */
     public function client(): Client
     {
-        $identifier = Statamic::get('standard-site.identifier');
-        $appPassword = Statamic::get('standard-site.app_password');
-        $pdsHost = Statamic::get('standard-site.pds_host', Client::DEFAULT_PDS);
+        $settings = Addon::get('publish-php/statamic-standard-site')->settings();
+
+        $identifier = $settings->get('identifier');
+        $appPassword = $settings->get('app_password');
+        $pdsHost = $settings->get('pds_host', Client::DEFAULT_PDS);
 
         if (! $identifier || ! $appPassword) {
             throw new \RuntimeException(
@@ -45,7 +47,7 @@ class ClientManager
      */
     public function publicationUri(): string
     {
-        $uri = Statamic::get('standard-site.publication_uri');
+        $uri = Addon::get('publish-php/statamic-standard-site')->settings()->get('publication_uri');
 
         if (! $uri) {
             throw new \RuntimeException(
