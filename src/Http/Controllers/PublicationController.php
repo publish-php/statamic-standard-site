@@ -16,7 +16,8 @@ use PublishPhp\AtprotoStandardSite\Service\Record;
  * Handles the publication management actions from the CP settings page.
  *
  * All actions are explicitly user-triggered — no hidden/automatic API calls.
- * The user enters credentials, clicks "Check" or "Create", and sees results.
+ * Credentials are read from the addon's config (populated by the CP settings
+ * page) so they never round-trip through the browser.
  */
 class PublicationController extends Controller
 {
@@ -29,17 +30,17 @@ class PublicationController extends Controller
     public function check(Request $request)
     {
         $validated = $request->validate([
-            'identifier' => ['required', 'string'],
-            'app_password' => ['required', 'string'],
+            'identifier' => ['nullable', 'string'],
+            'app_password' => ['nullable', 'string'],
             'pds_host' => ['nullable', 'string'],
         ]);
 
         try {
             $client = $this->createClient(
-                $validated['identifier'],
-                $validated['app_password'],
-                $validated['pds_host'] ?? Client::DEFAULT_PDS,
-            );
+                    $validated['identifier'] ?? config('statamic.standard-site.identifier'),
+                    $validated['app_password'] ?? config('statamic.standard-site.app_password'),
+                    $validated['pds_host'] ?? config('statamic.standard-site.pds_host') ?? Client::DEFAULT_PDS,
+                );
 
             $did = $client->getDid();
             $records = new Record($client);
@@ -88,8 +89,8 @@ class PublicationController extends Controller
     public function create(Request $request)
     {
         $validated = $request->validate([
-            'identifier' => ['required', 'string'],
-            'app_password' => ['required', 'string'],
+            'identifier' => ['nullable', 'string'],
+            'app_password' => ['nullable', 'string'],
             'pds_host' => ['nullable', 'string'],
             'name' => ['required', 'string', 'max:500'],
             'url' => ['required', 'string', 'url'],
@@ -98,10 +99,10 @@ class PublicationController extends Controller
 
         try {
             $client = $this->createClient(
-                $validated['identifier'],
-                $validated['app_password'],
-                $validated['pds_host'] ?? Client::DEFAULT_PDS,
-            );
+                    $validated['identifier'] ?? config('statamic.standard-site.identifier'),
+                    $validated['app_password'] ?? config('statamic.standard-site.app_password'),
+                    $validated['pds_host'] ?? config('statamic.standard-site.pds_host') ?? Client::DEFAULT_PDS,
+                );
 
             $records = new Record($client);
             $uri = $records->createPublication(new Publication(
@@ -127,8 +128,8 @@ class PublicationController extends Controller
         }
     }
 
-    private function createClient(string $identifier, string $appPassword, string $pdsHost): Client
+    private function createClient(?string $identifier, ?string $appPassword, ?string $pdsHost): Client
     {
-        return new Client($identifier, $appPassword, pdsHost: $pdsHost);
+        return new Client($identifier, $appPassword, pdsHost: $pdsHost ?? Client::DEFAULT_PDS);
     }
 }
