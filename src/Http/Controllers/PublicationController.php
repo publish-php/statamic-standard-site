@@ -11,6 +11,7 @@ use PublishPhp\AtprotoStandardSite\Exception\ApiErrorException;
 use PublishPhp\AtprotoStandardSite\Exception\AuthenticationException;
 use PublishPhp\AtprotoStandardSite\Model\Publication;
 use PublishPhp\AtprotoStandardSite\Service\Record;
+use Statamic\Facades\Statamic;
 
 /**
  * Handles the publication management actions from the CP settings page.
@@ -37,10 +38,8 @@ class PublicationController extends Controller
 
         try {
             $client = $this->createClient(
-                    $validated['identifier'] ?? config('statamic.standard-site.identifier'),
-                    $validated['app_password'] ?? config('statamic.standard-site.app_password'),
-                    $validated['pds_host'] ?? config('statamic.standard-site.pds_host') ?? Client::DEFAULT_PDS,
-                );
+                $validated,
+            );
 
             $did = $client->getDid();
             $records = new Record($client);
@@ -77,6 +76,11 @@ class PublicationController extends Controller
                 'success' => false,
                 'error' => 'API error: ' . $e->getMessage(),
             ], 502);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 422);
         }
     }
 
@@ -99,10 +103,8 @@ class PublicationController extends Controller
 
         try {
             $client = $this->createClient(
-                    $validated['identifier'] ?? config('statamic.standard-site.identifier'),
-                    $validated['app_password'] ?? config('statamic.standard-site.app_password'),
-                    $validated['pds_host'] ?? config('statamic.standard-site.pds_host') ?? Client::DEFAULT_PDS,
-                );
+                $validated,
+            );
 
             $records = new Record($client);
             $uri = $records->createPublication(new Publication(
@@ -125,11 +127,26 @@ class PublicationController extends Controller
                 'success' => false,
                 'error' => 'API error: ' . $e->getMessage(),
             ], 502);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 422);
         }
     }
 
-    private function createClient(?string $identifier, ?string $appPassword, ?string $pdsHost): Client
+    private function createClient(array $validated): Client
     {
-        return new Client($identifier, $appPassword, pdsHost: $pdsHost ?? Client::DEFAULT_PDS);
+        $identifier = $validated['identifier'] ?? Statamic::get('standard-site.identifier');
+        $appPassword = $validated['app_password'] ?? Statamic::get('standard-site.app_password');
+        $pdsHost = $validated['pds_host'] ?? Statamic::get('standard-site.pds_host', Client::DEFAULT_PDS);
+
+        if (! $identifier || ! $appPassword) {
+            throw new \RuntimeException(
+                'Standard Site credentials not configured. Set them in Settings → Standard Site.'
+            );
+        }
+
+        return new Client($identifier, $appPassword, pdsHost: $pdsHost);
     }
 }
