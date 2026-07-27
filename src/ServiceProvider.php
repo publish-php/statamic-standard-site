@@ -27,11 +27,6 @@ class ServiceProvider extends AddonServiceProvider
 
     public function bootAddon(): void
     {
-        $this->mergeConfigFrom(
-            __DIR__ . '/../config/standard-site.php',
-            'statamic.standard-site'
-        );
-
         $this->registerSettingsBlueprint([
             'tabs' => [
                 'credentials' => [
