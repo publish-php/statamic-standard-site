@@ -174,7 +174,7 @@ async function checkPublications() {
     checked.value = false;
 
     try {
-        const response = await $axios.post('/cp/standard-site/publication/check');
+        const response = await $axios.post(props.meta.check_url);
 
         if (response.data.success) {
             publications.value = response.data.publications || [];
@@ -212,7 +212,7 @@ async function createPublication() {
         };
 
         const response = await $axios.post(
-            '/cp/standard-site/publication/create',
+            props.meta.create_url,
             payload,
         );
 
