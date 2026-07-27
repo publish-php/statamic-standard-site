@@ -12,6 +12,9 @@ class PublicationManagerFieldtype extends Fieldtype
 
     public function preload(): array
     {
-        return [];
+        return [
+            'check_url' => cp_route('standard-site.publication.check'),
+            'create_url' => cp_route('standard-site.publication.create'),
+        ];
     }
 }
