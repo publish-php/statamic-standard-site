@@ -17,6 +17,10 @@ class ServiceProvider extends AddonServiceProvider
         \PublishPhp\StatamicStandardSite\Fieldtypes\PublicationManagerFieldtype::class,
     ];
 
+    protected $tags = [
+        \PublishPhp\StatamicStandardSite\Tags\StandardSiteTags::class,
+    ];
+
     protected $vite = [
         'input' => [
             'resources/js/addon.js',
