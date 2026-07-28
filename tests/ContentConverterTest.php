@@ -580,9 +580,10 @@ class ContentConverterTest extends TestCase
     public function test_image_asset_reference_resolved_to_url(): void
     {
         $resolver = function (string $ref): ?string {
-            // Simulate Statamic's Asset::find()->url() resolution
+            // Match the production resolver: strip 'asset::' prefix before lookup
             if (str_starts_with($ref, 'asset::')) {
-                [, , $path] = explode('::', $ref, 3);
+                $id = substr($ref, strlen('asset::'));
+                [$container, $path] = explode('::', $id, 2);
                 return 'https://example.com/assets/' . $path;
             }
             return null;

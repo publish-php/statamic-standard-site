@@ -206,9 +206,11 @@ class ServiceProvider extends AddonServiceProvider
             return new ContentConverter(
                 excludedSets: [],
                 assetUrlResolver: function (string $ref): ?string {
-                    // Statamic asset references: 'asset::{container}::{path}'
-                    $asset = \Statamic\Facades\Asset::find($ref);
-                    return $asset?->url();
+                    // Bard stores image src as 'asset::{container}::{path}'
+                    // Asset::find() expects '{container}::{path}' — strip the leading 'asset::' prefix
+                    $id = str_starts_with($ref, 'asset::') ? substr($ref, strlen('asset::')) : $ref;
+                    $asset = \Statamic\Facades\Asset::findById($id);
+                    return $asset?->absoluteUrl();
                 },
             );
         });
