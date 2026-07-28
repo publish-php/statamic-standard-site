@@ -533,4 +533,47 @@ class ContentConverterTest extends TestCase
         $this->assertStringContainsString('```bash', $result);
         $this->assertStringContainsString('echo "hello"', $result);
     }
+
+    public function test_bard_flat_prosemirror_nodes_format(): void
+    {
+        // Statamic stores Bard-without-sets as a flat array of ProseMirror
+        // block nodes, NOT wrapped in a {type: doc, content: [...]} envelope.
+        // This is the actual format in .md files on disk.
+        $bard = [
+            [
+                'type' => 'paragraph',
+                'attrs' => ['textAlign' => null],
+                'content' => [
+                    ['type' => 'text', 'text' => 'First paragraph of content.'],
+                ],
+            ],
+            [
+                'type' => 'heading',
+                'attrs' => ['textAlign' => null, 'level' => 2],
+                'content' => [
+                    ['type' => 'text', 'text' => 'A Section Heading'],
+                ],
+            ],
+            [
+                'type' => 'paragraph',
+                'attrs' => ['textAlign' => null],
+                'content' => [
+                    ['type' => 'text', 'text' => 'Second paragraph.'],
+                ],
+            ],
+        ];
+
+        $converter = new ContentConverter();
+
+        $markdown = $converter->toMarkdown($bard);
+        $this->assertStringContainsString('First paragraph of content.', $markdown);
+        $this->assertStringContainsString('## A Section Heading', $markdown);
+        $this->assertStringContainsString('Second paragraph.', $markdown);
+
+        $textContent = $converter->toTextContent($bard);
+        $this->assertStringContainsString('First paragraph of content.', $textContent);
+        $this->assertStringContainsString('A Section Heading', $textContent);
+        $this->assertStringContainsString('Second paragraph.', $textContent);
+        $this->assertStringNotContainsString('##', $textContent);
+    }
 }

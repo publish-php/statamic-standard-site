@@ -104,8 +104,23 @@ class ContentConverter
             return $this->renderNodes($bard['content']);
         }
 
-        // Check if this is the "with sets" format (array of top-level items)
-        // where text items have type "text" with a "text" key containing HTML
+        // Check if this is a flat array of ProseMirror block nodes
+        // (Statamic's "no sets" Bard format — array of paragraph, heading, etc.)
+        if (isset($bard[0]) && is_array($bard[0]) && isset($bard[0]['type'])) {
+            $firstType = $bard[0]['type'];
+            $isProseMirrorNodes = in_array($firstType, [
+                'paragraph', 'heading', 'bulletList', 'orderedList',
+                'blockquote', 'codeBlock', 'horizontalRule', 'table',
+                'hardBreak', 'image',
+            ], true);
+
+            if ($isProseMirrorNodes) {
+                return $this->renderNodes($bard);
+            }
+        }
+
+        // "With sets" format — array of top-level items where text items
+        // have type "text" with a "text" key containing HTML, or type "set"
         $markdown = '';
         foreach ($bard as $item) {
             if (!is_array($item)) {
@@ -141,6 +156,20 @@ class ContentConverter
     {
         if (($bard['type'] ?? null) === 'doc' && isset($bard['content'])) {
             return $this->renderNodesTextContent($bard['content']);
+        }
+
+        // Flat array of ProseMirror block nodes (Statamic's "no sets" format)
+        if (isset($bard[0]) && is_array($bard[0]) && isset($bard[0]['type'])) {
+            $firstType = $bard[0]['type'];
+            $isProseMirrorNodes = in_array($firstType, [
+                'paragraph', 'heading', 'bulletList', 'orderedList',
+                'blockquote', 'codeBlock', 'horizontalRule', 'table',
+                'hardBreak', 'image',
+            ], true);
+
+            if ($isProseMirrorNodes) {
+                return $this->renderNodesTextContent($bard);
+            }
         }
 
         $text = '';
