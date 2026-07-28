@@ -23,9 +23,14 @@ class ContentConverter
      * Set types to exclude from conversion (e.g. 'newsletter_signup', 'poll').
      *
      * @param list<string> $excludedSets
+     * @param callable|null $assetUrlResolver Resolves asset references to public URLs.
+     *   Signature: fn(string $assetRef): string|null
+     *   Example ref: 'asset::assets::posts/image.png'
+     *   If null, asset references are passed through as-is.
      */
     public function __construct(
         private readonly array $excludedSets = [],
+        private readonly mixed $assetUrlResolver = null,
     ) {}
 
     /**
@@ -386,6 +391,19 @@ class ContentConverter
         $src = $attrs['src'] ?? '';
         $alt = $attrs['alt'] ?? '';
         $title = $attrs['title'] ?? '';
+
+        // Resolve Statamic asset references (e.g. 'asset::assets::posts/image.png')
+        // to public URLs using the injected resolver.
+        if ($src !== '' && $this->assetUrlResolver !== null) {
+            $resolved = ($this->assetUrlResolver)($src);
+            if ($resolved !== null) {
+                $src = $resolved;
+            }
+        }
+
+        if ($src === '') {
+            return '';
+        }
 
         if ($title) {
             return "![{$alt}]({$src} \"{$title}\")\n\n";
