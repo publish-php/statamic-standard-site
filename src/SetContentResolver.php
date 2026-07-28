@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace PublishPhp\StatamicStandardSite;
 
 use Statamic\Contracts\Assets\Asset;
+use Statamic\Assets\Asset as AssetClass;
 use Statamic\Fields\Fieldtype;
+use Statamic\Fields\Value;
 
 /**
  * Resolves the fields of a Bard set through Statamic's own augmentation
@@ -122,13 +124,24 @@ class SetContentResolver
     /**
      * Normalize an augmented assets value into a list of Asset objects.
      *
-     * `max_files: 1` augments to a single Asset (or null); multi-file augments
-     * to a query/collection of Assets.
+     * Statamic's `Fields::augment()` wraps each field in a lazy
+     * {@see \Statamic\Fields\Value}; calling `->value()` triggers the fieldtype's
+     * augmentation. For an `assets` field that yields a single Asset
+     * (`max_files: 1`) or a query/collection of Assets (multi-file).
      *
      * @return list<Asset>
      */
     private function assetsFromAugmented(mixed $augmented): array
     {
+        if ($augmented === null) {
+            return [];
+        }
+
+        // Unwrap the lazy Value wrapper produced by Fields::augment().
+        if ($augmented instanceof Value) {
+            $augmented = $augmented->value();
+        }
+
         if ($augmented === null) {
             return [];
         }
@@ -145,6 +158,9 @@ class SetContentResolver
         if (is_iterable($augmented)) {
             $assets = [];
             foreach ($augmented as $item) {
+                if ($item instanceof Value) {
+                    $item = $item->value();
+                }
                 if ($item instanceof Asset) {
                     $assets[] = $item;
                 }
@@ -179,16 +195,26 @@ class SetContentResolver
 
     /**
      * Classify an asset's media kind for rendering dispatch.
+     *
+     * Keys off the asset's `extension()` (guaranteed on the Asset contract) and
+     * classifies against Statamic's own canonical extension constants
+     * (`Asset::IMAGE/VIDEO/AUDIO_EXTENSIONS`). This stays perfectly aligned with
+     * Statamic's `isImage()/isVideo()/isAudio()` (which use the same constants
+     * under the hood) while remaining unit-testable against a minimal Asset
+     * stub — the contract guarantees `extension()`, whereas `isVideo()` /
+     * `isAudio()` live only on the concrete class.
      */
     private function mediaKind(Asset $asset): string
     {
-        if ($asset->isImage()) {
+        $extension = strtolower((string) $asset->extension());
+
+        if (in_array($extension, AssetClass::IMAGE_EXTENSIONS, true)) {
             return 'image';
         }
-        if ($asset->isVideo()) {
+        if (in_array($extension, AssetClass::VIDEO_EXTENSIONS, true)) {
             return 'video';
         }
-        if ($asset->isAudio()) {
+        if (in_array($extension, AssetClass::AUDIO_EXTENSIONS, true)) {
             return 'audio';
         }
         return 'file';
