@@ -15,6 +15,11 @@ class ServiceProvider extends AddonServiceProvider
 
     protected $fieldtypes = [
         \PublishPhp\StatamicStandardSite\Fieldtypes\PublicationManagerFieldtype::class,
+        \PublishPhp\StatamicStandardSite\Fieldtypes\StatusFieldtype::class,
+    ];
+
+    protected $tags = [
+        \PublishPhp\StatamicStandardSite\Tags\StandardSiteTags::class,
     ];
 
     protected $vite = [
@@ -116,6 +121,52 @@ class ServiceProvider extends AddonServiceProvider
                         ],
                     ],
                 ],
+                'notifications' => [
+                    'sections' => [
+                        [
+                            'display' => 'Failure Notifications',
+                            'fields' => [
+                                [
+                                    'handle' => 'notify_on_failure',
+                                    'field' => [
+                                        'type' => 'toggle',
+                                        'display' => 'Send email on sync failure',
+                                        'instructions' => 'When enabled, an email is sent on the first sync failure (throttled — not sent again until the settings page is viewed).',
+                                        'default' => false,
+                                        'width' => 50,
+                                    ],
+                                ],
+                                [
+                                    'handle' => 'notification_email',
+                                    'field' => [
+                                        'type' => 'text',
+                                        'input_type' => 'email',
+                                        'display' => 'Notification Email Address',
+                                        'instructions' => 'Email address for sync failure notifications. Leave empty to use the site\'s default mail address.',
+                                        'width' => 50,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'status' => [
+                    'sections' => [
+                        [
+                            'display' => 'Sync Status',
+                            'instructions' => 'View sync errors and recently synced documents. Click Refresh to load documents from the PDS.',
+                            'fields' => [
+                                [
+                                    'handle' => 'status_dashboard',
+                                    'field' => [
+                                        'type' => 'standard-site-status',
+                                        'display' => 'Status Dashboard',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
             ],
         ]);
     }
@@ -126,5 +177,6 @@ class ServiceProvider extends AddonServiceProvider
         $this->app->singleton(ContentConverter::class);
         $this->app->singleton(EntryMapper::class);
         $this->app->singleton(SyncManager::class);
+        $this->app->singleton(SyncErrorStore::class);
     }
 }
