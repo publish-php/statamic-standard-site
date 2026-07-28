@@ -650,7 +650,7 @@ class ContentConverterTest extends TestCase
         };
     }
 
-    public function test_video_slide_with_poster_renders_clickable_poster_link(): void
+    public function test_video_slide_with_poster_renders_poster_image_and_labelled_link(): void
     {
         $descriptors = [
             ['kind' => 'asset', 'handle' => 'video', 'media' => 'video', 'url' => 'https://cdn.example.com/talks/slide2.mp4', 'alt' => 'MySpace profiles float in', 'mime' => 'video/mp4'],
@@ -667,23 +667,48 @@ class ContentConverterTest extends TestCase
         $resolver = $this->fakeSetResolver(['video_slide' => $descriptors]);
         $markdown = $this->converter->toMarkdown($bard, $resolver);
 
-        // Video with poster → pure-Markdown clickable poster: the poster image
-        // links to the video file. Renders everywhere images render; no HTML
-        // (Standard Reader strips raw <video>).
-        $this->assertStringContainsString(
-            '[![MySpace profiles float in](https://cdn.example.com/talks/slide2_poster.jpg)](https://cdn.example.com/talks/slide2.mp4)',
-            $markdown,
-        );
+        // Video with poster → standalone poster IMAGE (its own block) followed
+        // by a separate labelled link to the video. Standard Reader drops an
+        // image wrapped in a link (empty plaintext), so the two are kept apart.
+        $this->assertStringContainsString('![MySpace profiles float in](https://cdn.example.com/talks/slide2_poster.jpg)', $markdown);
+        $this->assertStringContainsString('[MySpace profiles float in](https://cdn.example.com/talks/slide2.mp4)', $markdown);
+
+        // NOT a clickable poster (image inside a link) and NOT raw HTML.
+        $this->assertStringNotContainsString('[![', $markdown);
         $this->assertStringNotContainsString('<video', $markdown);
 
-        // Poster is consumed into the link — NOT a standalone image
-        $this->assertStringNotContainsString('![](https://cdn.example.com/talks/slide2_poster.jpg)', $markdown);
+        // Poster comes before its link.
+        $this->assertLessThan(
+            strpos($markdown, '](https://cdn.example.com/talks/slide2.mp4)'),
+            strpos($markdown, '![MySpace profiles float in](https://cdn.example.com/talks/slide2_poster.jpg)'),
+        );
 
         // Nested Bard description rendered via the clean node walker
         $this->assertStringContainsString('The video opens to a blank screen.', $markdown);
 
         // No raw stored paths leak through (the original bug)
         $this->assertStringNotContainsString('talks/creative-web', $markdown);
+    }
+
+    public function test_video_with_poster_but_empty_alt_uses_default_link_label(): void
+    {
+        // Real-world talk data: assets carry no alt. The poster image renders
+        // with an empty alt (fine — still a standalone image block), but the
+        // link needs a non-empty label or Standard Reader would drop it too.
+        $descriptors = [
+            ['kind' => 'asset', 'handle' => 'video', 'media' => 'video', 'url' => 'https://cdn.example.com/talks/slide.mp4', 'alt' => null, 'mime' => 'video/mp4'],
+            ['kind' => 'asset', 'handle' => 'poster', 'media' => 'image', 'url' => 'https://cdn.example.com/talks/slide_poster.jpg', 'alt' => null, 'mime' => 'image/jpeg'],
+        ];
+
+        $bard = [
+            ['type' => 'set', 'attrs' => ['id' => 'abc', 'values' => ['type' => 'video_slide']]],
+        ];
+
+        $resolver = $this->fakeSetResolver(['video_slide' => $descriptors]);
+        $markdown = $this->converter->toMarkdown($bard, $resolver);
+
+        $this->assertStringContainsString('![](https://cdn.example.com/talks/slide_poster.jpg)', $markdown);
+        $this->assertStringContainsString('[Watch the video](https://cdn.example.com/talks/slide.mp4)', $markdown);
     }
 
     public function test_video_without_poster_falls_back_to_plain_link(): void
@@ -746,10 +771,11 @@ class ContentConverterTest extends TestCase
         $this->assertStringNotContainsString('![A jingle]', $markdown);
     }
 
-    public function test_audio_with_poster_renders_clickable_poster_link(): void
+    public function test_audio_with_poster_renders_poster_image_and_labelled_link(): void
     {
         // The poster convention also attaches to audio; when it does, the audio
-        // renders as a clickable poster link just like video.
+        // renders as a standalone poster image followed by a labelled link,
+        // just like video.
         $descriptors = [
             ['kind' => 'asset', 'handle' => 'track', 'media' => 'audio', 'url' => 'https://cdn.example.com/clip.mp3', 'alt' => 'A jingle', 'mime' => 'audio/mpeg'],
             ['kind' => 'asset', 'handle' => 'poster', 'media' => 'image', 'url' => 'https://cdn.example.com/cover.jpg', 'alt' => null, 'mime' => 'image/jpeg'],
@@ -762,11 +788,28 @@ class ContentConverterTest extends TestCase
         $resolver = $this->fakeSetResolver(['audio_block' => $descriptors]);
         $markdown = $this->converter->toMarkdown($bard, $resolver);
 
-        $this->assertStringContainsString(
-            '[![A jingle](https://cdn.example.com/cover.jpg)](https://cdn.example.com/clip.mp3)',
-            $markdown,
-        );
+        $this->assertStringContainsString('![A jingle](https://cdn.example.com/cover.jpg)', $markdown);
+        $this->assertStringContainsString('[A jingle](https://cdn.example.com/clip.mp3)', $markdown);
+        $this->assertStringNotContainsString('[![', $markdown);
         $this->assertStringNotContainsString('<audio', $markdown);
+    }
+
+    public function test_audio_with_poster_but_empty_alt_uses_default_link_label(): void
+    {
+        $descriptors = [
+            ['kind' => 'asset', 'handle' => 'track', 'media' => 'audio', 'url' => 'https://cdn.example.com/clip.mp3', 'alt' => null, 'mime' => 'audio/mpeg'],
+            ['kind' => 'asset', 'handle' => 'poster', 'media' => 'image', 'url' => 'https://cdn.example.com/cover.jpg', 'alt' => null, 'mime' => 'image/jpeg'],
+        ];
+
+        $bard = [
+            ['type' => 'set', 'attrs' => ['id' => 'ghi', 'values' => ['type' => 'audio_block']]],
+        ];
+
+        $resolver = $this->fakeSetResolver(['audio_block' => $descriptors]);
+        $markdown = $this->converter->toMarkdown($bard, $resolver);
+
+        $this->assertStringContainsString('![](https://cdn.example.com/cover.jpg)', $markdown);
+        $this->assertStringContainsString('[Listen to the audio](https://cdn.example.com/clip.mp3)', $markdown);
     }
 
     public function test_poster_without_video_falls_back_to_image(): void
