@@ -7,6 +7,9 @@ namespace Tests;
 use PHPUnit\Framework\TestCase;
 use PublishPhp\StatamicStandardSite\SyncResult;
 use PublishPhp\StatamicStandardSite\SyncErrorStore;
+use PublishPhp\StatamicStandardSite\Tags\StandardSiteTags;
+use Statamic\Fields\Value;
+use Statamic\Tags\Context;
 
 /**
  * Tests for Layer 6 components.
@@ -33,6 +36,61 @@ class Layer6Test extends TestCase
         $reflection = new \ReflectionClass(\PublishPhp\StatamicStandardSite\Tags\StandardSiteTags::class);
         $handleProp = $reflection->getStaticProperties()['handle'] ?? null;
         $this->assertSame('standard_site', $handleProp);
+    }
+
+    public function test_document_link_renders_link_from_context_uri(): void
+    {
+        // Statamic exposes the entry's fields at the top level of the template
+        // context (no `entry` variable), so the tag reads the synced URI there.
+        $tag = new StandardSiteTags();
+        $tag->setContext(['standard_site_synced_uri' => 'at://did:plc:abc/site.standard.document/xyz']);
+
+        $this->assertSame(
+            '<link rel="site.standard.document" href="at://did:plc:abc/site.standard.document/xyz" />',
+            $tag->documentLink(),
+        );
+    }
+
+    public function test_document_link_unwraps_augmented_value(): void
+    {
+        // On the front end the field arrives augmented (a Value wrapper);
+        // Context::value() must unwrap it.
+        $tag = new StandardSiteTags();
+        $tag->setContext([
+            'standard_site_synced_uri' => new Value(
+                'at://did:plc:abc/site.standard.document/xyz',
+                'standard_site_synced_uri',
+                null,
+                null,
+            ),
+        ]);
+
+        $this->assertStringContainsString(
+            'href="at://did:plc:abc/site.standard.document/xyz"',
+            (string) $tag->documentLink(),
+        );
+    }
+
+    public function test_document_link_returns_null_when_unsynced(): void
+    {
+        // Homepage / listing / never-synced entry: no URI in context → nothing.
+        $tag = new StandardSiteTags();
+
+        $tag->setContext([]);
+        $this->assertNull($tag->documentLink());
+
+        $tag->setContext(['standard_site_synced_uri' => null]);
+        $this->assertNull($tag->documentLink());
+    }
+
+    public function test_document_link_escapes_uri(): void
+    {
+        $tag = new StandardSiteTags();
+        $tag->setContext(['standard_site_synced_uri' => 'at://x/"><script>']);
+
+        $out = (string) $tag->documentLink();
+        $this->assertStringNotContainsString('<script>', $out);
+        $this->assertStringContainsString('&lt;script&gt;', $out);
     }
 
     public function test_status_controller_class_exists(): void

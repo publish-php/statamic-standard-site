@@ -53,6 +53,11 @@ Add this tag to your template's `<head>`:
 ```
 
 This outputs the `<link rel="site.standard.document">` tag for the current entry.
+It reads the synced AT-URI from the current template context, so it works in an
+entry/show template, in a shared layout `<head>`, or inside a collection loop.
+It renders **nothing** when the entry hasn't been synced (no URI), so a single
+placement in your layout `<head>` is safe — it simply no-ops on the homepage,
+listing pages, and any unsynced entry.
 
 ## Content conversion
 
