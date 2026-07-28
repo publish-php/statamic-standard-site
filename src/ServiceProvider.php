@@ -201,7 +201,18 @@ class ServiceProvider extends AddonServiceProvider
     public function register(): void
     {
         $this->app->singleton(ClientManager::class);
-        $this->app->singleton(ContentConverter::class);
+
+        $this->app->singleton(ContentConverter::class, function () {
+            return new ContentConverter(
+                excludedSets: [],
+                assetUrlResolver: function (string $ref): ?string {
+                    // Statamic asset references: 'asset::{container}::{path}'
+                    $asset = \Statamic\Facades\Asset::find($ref);
+                    return $asset?->url();
+                },
+            );
+        });
+
         $this->app->singleton(EntryMapper::class);
         $this->app->singleton(SyncManager::class);
         $this->app->singleton(SyncErrorStore::class);

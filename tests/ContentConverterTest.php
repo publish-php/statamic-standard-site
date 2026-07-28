@@ -576,4 +576,60 @@ class ContentConverterTest extends TestCase
         $this->assertStringContainsString('Second paragraph.', $textContent);
         $this->assertStringNotContainsString('##', $textContent);
     }
+
+    public function test_image_asset_reference_resolved_to_url(): void
+    {
+        $resolver = function (string $ref): ?string {
+            // Simulate Statamic's Asset::find()->url() resolution
+            if (str_starts_with($ref, 'asset::')) {
+                [, , $path] = explode('::', $ref, 3);
+                return 'https://example.com/assets/' . $path;
+            }
+            return null;
+        };
+
+        $converter = new ContentConverter(excludedSets: [], assetUrlResolver: $resolver);
+
+        $bard = [
+            [
+                'type' => 'paragraph',
+                'content' => [
+                    [
+                        'type' => 'image',
+                        'attrs' => [
+                            'src' => 'asset::assets::posts/image.png',
+                            'alt' => 'A photo',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $markdown = $converter->toMarkdown($bard);
+        $this->assertStringContainsString('![A photo](https://example.com/assets/posts/image.png)', $markdown);
+        $this->assertStringNotContainsString('asset::', $markdown);
+    }
+
+    public function test_image_without_resolver_passes_src_through(): void
+    {
+        $converter = new ContentConverter();
+
+        $bard = [
+            [
+                'type' => 'paragraph',
+                'content' => [
+                    [
+                        'type' => 'image',
+                        'attrs' => [
+                            'src' => 'https://example.com/image.png',
+                            'alt' => 'Direct URL',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $markdown = $converter->toMarkdown($bard);
+        $this->assertStringContainsString('![Direct URL](https://example.com/image.png)', $markdown);
+    }
 }
