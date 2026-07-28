@@ -101,7 +101,7 @@ async function toggleCollection(col) {
     toggling.value = col.handle;
     const newEnabled = !col.enabled;
     try {
-        await $axios.patch(props.meta.toggle_url.replace('{handle}', col.handle), {
+        await $axios.patch(props.meta.toggle_url.replace('__HANDLE__', col.handle), {
             enabled: newEnabled,
         });
         col.enabled = newEnabled;
