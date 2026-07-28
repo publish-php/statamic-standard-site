@@ -7,6 +7,9 @@ namespace Tests;
 use PHPUnit\Framework\TestCase;
 use PublishPhp\StatamicStandardSite\ContentConverter;
 use PublishPhp\StatamicStandardSite\EntryMapper;
+use Statamic\Contracts\Assets\Asset as AssetContract;
+use Statamic\Fields\Value;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
  * Tests for EntryMapper convention detection and blueprint overrides.
@@ -125,5 +128,125 @@ class EntryMapperTest extends TestCase
         $result = \PublishPhp\StatamicStandardSite\SyncResult::success('', 'deleted');
         $this->assertTrue($result->success);
         $this->assertSame('deleted', $result->action);
+    }
+
+    // ── Cover / feature image detection + prepend ──
+
+    public function test_cover_image_handle_conventions_and_override_registered(): void
+    {
+        // The auto-detection contract: conventional handles + an override.
+        // Guards the documented "magic" list against accidental edits.
+        $reflection = new \ReflectionClass(EntryMapper::class);
+
+        $convention = $reflection->getConstant('CONVENTION');
+        $this->assertArrayHasKey('cover_image', $convention);
+        $this->assertContains('cover', $convention['cover_image']);
+        $this->assertContains('feature_image', $convention['cover_image']);
+        $this->assertContains('featured_image', $convention['cover_image']);
+        // Bare `image` is deliberately excluded as too ambiguous.
+        $this->assertNotContains('image', $convention['cover_image']);
+
+        $overrides = $reflection->getConstant('OVERRIDES');
+        $this->assertSame('standard_site_cover_image', $overrides['cover_image']);
+    }
+
+    public function test_prepend_cover_markdown_prepends_as_first_block(): void
+    {
+        $expose = $this->expose();
+
+        // No cover → body untouched.
+        $this->assertSame('Body.', $expose->prependCoverMarkdown(null, 'Body.'));
+
+        // Cover + body → image first, blank line, then body.
+        $this->assertSame(
+            "![A cover](https://cdn.example.com/cover.jpg)\n\nBody.",
+            $expose->prependCoverMarkdown(['url' => 'https://cdn.example.com/cover.jpg', 'alt' => 'A cover'], 'Body.'),
+        );
+
+        // Cover + empty body → just the image (no trailing blank line).
+        $this->assertSame(
+            '![A cover](https://cdn.example.com/cover.jpg)',
+            $expose->prependCoverMarkdown(['url' => 'https://cdn.example.com/cover.jpg', 'alt' => 'A cover'], ''),
+        );
+
+        // Empty alt is fine — still a standalone image block.
+        $this->assertSame(
+            '![](https://cdn.example.com/cover.jpg)',
+            $expose->prependCoverMarkdown(['url' => 'https://cdn.example.com/cover.jpg', 'alt' => ''], ''),
+        );
+    }
+
+    public function test_first_asset_unwraps_value_and_collections(): void
+    {
+        $expose = $this->expose();
+        $asset = $this->makeAsset('jpg', 'https://cdn.example.com/cover.jpg', 'Alt', 'image/jpeg');
+
+        // Value-wrapped single asset (the augmented shape).
+        $this->assertSame($asset, $expose->firstAsset(new Value($asset, 'assets', null, null)));
+
+        // Bare asset.
+        $this->assertSame($asset, $expose->firstAsset($asset));
+
+        // Value wrapping a collection → first asset.
+        $this->assertSame($asset, $expose->firstAsset(new Value([$asset], 'assets', null, null)));
+
+        // Nothing resolvable.
+        $this->assertNull($expose->firstAsset(new Value(null, 'assets', null, null)));
+        $this->assertNull($expose->firstAsset(new Value([], 'assets', null, null)));
+        $this->assertNull($expose->firstAsset(null));
+    }
+
+    /**
+     * Expose EntryMapper's private cover helpers (they don't touch the
+     * ContentConverter dependency), mirroring SetContentResolverTest's seam.
+     */
+    private function expose(): object
+    {
+        $mapper = new EntryMapper($this->converter);
+
+        return new class ($mapper) {
+            public function __construct(private EntryMapper $m) {}
+
+            public function prependCoverMarkdown(?array $cover, string $body): string
+            {
+                return (fn () => $this->prependCoverMarkdown($cover, $body))->call($this->m);
+            }
+
+            public function firstAsset(mixed $augmented): ?AssetContract
+            {
+                return (fn () => $this->firstAsset($augmented))->call($this->m);
+            }
+        };
+    }
+
+    /**
+     * Minimal Asset-contract stub (only the methods EntryMapper touches, plus
+     * no-op contract stubs). Mirrors SetContentResolverTest::makeAsset.
+     */
+    private function makeAsset(string $ext, string $url, ?string $alt = null, ?string $mime = null): AssetContract
+    {
+        return new class ($ext, $url, $alt, $mime) implements AssetContract {
+            public function __construct(
+                private string $ext,
+                private string $url,
+                private ?string $alt,
+                private ?string $mime,
+            ) {}
+
+            public function extension() { return $this->ext; }
+            public function url() { return $this->url; }
+            public function absoluteUrl() { return $this->url; }
+            public function mimeType() { return $this->mime; }
+            public function get($key, $fallback = null) { return $key === 'alt' ? $this->alt : $fallback; }
+            public function filename() { return ''; }
+            public function basename() { return ''; }
+            public function container($container = null) { return null; }
+            public function manipulate($params = null) { return ''; }
+            public function isImage() { return false; }
+            public function lastModified() { return null; }
+            public function upload(UploadedFile $file) { return $this; }
+            public function download(?string $name = null, array $headers = []) { return ''; }
+            public function contents() { return ''; }
+        };
     }
 }

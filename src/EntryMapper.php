@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace PublishPhp\StatamicStandardSite;
 
+use Statamic\Contracts\Assets\Asset;
 use Statamic\Entries\Entry;
 use Statamic\Fields\Blueprint;
+use Statamic\Fields\Value;
 
 /**
  * Maps a Statamic entry to site.standard.document fields.
@@ -28,6 +30,13 @@ class EntryMapper
         'description' => ['description', 'summary', 'excerpt', 'meta_description'],
         'published_at' => ['date', 'published_at'],
         'tags' => ['tags'],
+        // Cover / feature image (see resolveCoverImage). Convention-detected by
+        // handle; first match wins. Deliberately excludes the bare `image`
+        // handle as too ambiguous — use the override for a non-standard handle.
+        'cover_image' => [
+            'cover', 'cover_image', 'feature_image', 'featured_image',
+            'hero', 'hero_image', 'banner', 'og_image', 'thumbnail',
+        ],
     ];
 
     /**
@@ -39,6 +48,7 @@ class EntryMapper
         'published_at' => 'standard_site_published_at',
         'path' => 'standard_site_path',
         'tags' => 'standard_site_tags',
+        'cover_image' => 'standard_site_cover_image',
     ];
 
     public function __construct(
@@ -58,10 +68,14 @@ class EntryMapper
     {
         $blueprint = $entry->blueprint();
 
+        // Resolve the cover/feature image once; it is prepended to both the
+        // Markdown content and the plaintext textContent.
+        $cover = $this->resolveCoverImage($entry, $blueprint);
+
         return [
             'title' => $this->resolveTitle($entry, $blueprint),
-            'content' => $this->resolveContent($entry, $blueprint),
-            'textContent' => $this->resolveTextContent($entry, $blueprint),
+            'content' => $this->resolveContent($entry, $blueprint, $cover),
+            'textContent' => $this->resolveTextContent($entry, $blueprint, $cover),
             'path' => $this->resolvePath($entry, $blueprint),
             'description' => $this->resolveDescription($entry, $blueprint),
             'publishedAt' => $this->resolvePublishedAt($entry, $blueprint),
@@ -80,24 +94,31 @@ class EntryMapper
         return (string) $entry->get('title');
     }
 
-    private function resolveContent(Entry $entry, Blueprint $blueprint): ?array
+    /**
+     * @param array{url: string, alt: string}|null $cover Resolved cover image.
+     */
+    private function resolveContent(Entry $entry, Blueprint $blueprint, ?array $cover): ?array
     {
         // Convention only: field with handle 'content'
         // Content is not overridable per-entry (duplicating content would be error-prone)
-        if (! $blueprint->hasField('content')) {
-            return null;
+        $body = '';
+        $fieldtype = 'markdown';
+        if ($blueprint->hasField('content')) {
+            $value = $entry->get('content');
+            $body = $this->converter->toMarkdown($value, $this->setResolverFor($blueprint));
+            $fieldtype = $blueprint->field('content')?->type() ?? 'markdown';
         }
 
-        $value = $entry->get('content');
-        $markdown = $this->converter->toMarkdown($value, $this->setResolverFor($blueprint));
+        // Prepend the cover as the first block so readers that derive the hero
+        // image from the leading content image use the real cover (see
+        // resolveCoverImage), rather than promoting a stray early body image.
+        $markdown = $this->prependCoverMarkdown($cover, $body);
 
         if ($markdown === '') {
             return null;
         }
 
         // Determine flavor based on field type
-        $field = $blueprint->field('content');
-        $fieldtype = $field?->type() ?? 'markdown';
         $flavor = $fieldtype === 'bard' ? 'commonmark' : 'gfm';
 
         return [
@@ -110,15 +131,23 @@ class EntryMapper
         ];
     }
 
-    private function resolveTextContent(Entry $entry, Blueprint $blueprint): ?string
+    /**
+     * @param array{url: string, alt: string}|null $cover Resolved cover image.
+     */
+    private function resolveTextContent(Entry $entry, Blueprint $blueprint, ?array $cover): ?string
     {
         // Convention only: field with handle 'content'
-        if (! $blueprint->hasField('content')) {
-            return null;
+        $text = '';
+        if ($blueprint->hasField('content')) {
+            $value = $entry->get('content');
+            $text = $this->converter->toTextContent($value, $this->setResolverFor($blueprint));
         }
 
-        $value = $entry->get('content');
-        $text = $this->converter->toTextContent($value, $this->setResolverFor($blueprint));
+        // Mirror the content body: the cover contributes its alt text (if any).
+        $alt = $cover['alt'] ?? '';
+        if ($alt !== '') {
+            $text = $text === '' ? $alt : $alt . "\n" . $text;
+        }
 
         return $text !== '' ? $text : null;
     }
@@ -145,6 +174,123 @@ class EntryMapper
 
         return static fn (string $setType, array $values, int $index): array
             => $resolver->resolve($setType, $values, $index);
+    }
+
+    /**
+     * Resolve the entry's cover / feature image to a URL + alt, or null.
+     *
+     * "A little magic": the document lexicon has a `coverImage` blob field, but
+     * the dominant reader (Standard Reader) derives the hero image from the
+     * FIRST image block of the content body and only falls back to `coverImage`
+     * when there is no leading body image. Cover/feature images in Statamic
+     * almost always live in a SEPARATE field outside the content body, so
+     * without help they never reach the document — and a stray early body image
+     * gets promoted to the cover instead. We therefore auto-detect the cover
+     * field and prepend it to the content body (see {@see resolveContent}).
+     *
+     * Detection is convention-based — nothing is hardwired to a particular
+     * blueprint — with a `standard_site_cover_image` override to point at a
+     * non-standard handle. The field is read through augmentation so an `assets`
+     * field resolves to a real Asset with an absolute URL on any driver.
+     *
+     * @return array{url: string, alt: string}|null
+     */
+    private function resolveCoverImage(Entry $entry, Blueprint $blueprint): ?array
+    {
+        $handle = $this->coverImageHandle($entry, $blueprint);
+        if ($handle === null) {
+            return null;
+        }
+
+        $asset = $this->firstAsset($entry->augmentedValue($handle));
+        if ($asset === null) {
+            return null;
+        }
+
+        $url = $asset->absoluteUrl();
+        if (! $url) {
+            return null;
+        }
+
+        return [
+            'url' => $url,
+            'alt' => (string) ($asset->get('alt') ?: ''),
+        ];
+    }
+
+    /**
+     * Determine which field handle holds the cover image, or null if none.
+     *
+     * Override (`standard_site_cover_image`) wins; otherwise the first
+     * convention handle that exists on the blueprint and has a value.
+     */
+    private function coverImageHandle(Entry $entry, Blueprint $blueprint): ?string
+    {
+        $override = self::OVERRIDES['cover_image'];
+        if ($blueprint->hasField($override) && $entry->get($override)) {
+            return $override;
+        }
+
+        foreach (self::CONVENTION['cover_image'] as $handle) {
+            if ($blueprint->hasField($handle) && $entry->get($handle)) {
+                return $handle;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Reduce an augmented assets value to its first Asset, or null.
+     *
+     * `Entry::augmentedValue()` wraps the field in a lazy {@see Value}; resolving
+     * it yields a single Asset (`max_files: 1`) or a query/collection of Assets.
+     * Cover images are single, so we take the first. Mirrors the unwrapping in
+     * {@see SetContentResolver::assetsFromAugmented()}.
+     */
+    private function firstAsset(mixed $augmented): ?Asset
+    {
+        if ($augmented instanceof Value) {
+            $augmented = $augmented->value();
+        }
+
+        if ($augmented instanceof Asset) {
+            return $augmented;
+        }
+
+        // Query builder or collection — resolve to a plain list.
+        if (is_object($augmented) && method_exists($augmented, 'get')) {
+            $augmented = $augmented->get();
+        }
+
+        if (is_iterable($augmented)) {
+            foreach ($augmented as $item) {
+                if ($item instanceof Value) {
+                    $item = $item->value();
+                }
+                if ($item instanceof Asset) {
+                    return $item;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Prepend the cover image as the first Markdown block of the content body.
+     *
+     * @param array{url: string, alt: string}|null $cover
+     */
+    private function prependCoverMarkdown(?array $cover, string $body): string
+    {
+        if ($cover === null) {
+            return $body;
+        }
+
+        $image = "![{$cover['alt']}]({$cover['url']})";
+
+        return $body === '' ? $image : $image . "\n\n" . $body;
     }
 
     private function resolvePath(Entry $entry, Blueprint $blueprint): ?string
