@@ -179,9 +179,11 @@ class SyncManager
      */
     private function isNotFoundError(ApiErrorException $e): bool
     {
-        $message = $e->getMessage();
-        return str_contains(strtolower($message), 'not found')
-            || str_contains(strtolower($message), 'could not find')
+        $message = strtolower($e->getMessage());
+        return str_contains($message, 'not found')
+            || str_contains($message, 'could not find')
+            || str_contains($message, 'could not locate')
+            || str_contains($message, 'does not exist')
             || $e->getCode() === 404;
     }
 }
