@@ -20,9 +20,13 @@ class CollectionFieldtype extends Fieldtype
 
     public function preload(): array
     {
+        // Generate the toggle URL with a real placeholder the Vue component can replace.
+        // We can't pass '{handle}' to cp_route() — it expects actual parameter values.
+        $toggleBase = cp_route('standard-site.collections.toggle', '__HANDLE__');
+
         return [
             'collections_url' => cp_route('standard-site.collections.index'),
-            'toggle_url' => cp_route('standard-site.collections.toggle', '{handle}'),
+            'toggle_url' => $toggleBase,
         ];
     }
 }
