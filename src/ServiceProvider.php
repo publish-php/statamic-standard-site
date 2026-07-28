@@ -16,6 +16,7 @@ class ServiceProvider extends AddonServiceProvider
     protected $fieldtypes = [
         \PublishPhp\StatamicStandardSite\Fieldtypes\PublicationManagerFieldtype::class,
         \PublishPhp\StatamicStandardSite\Fieldtypes\StatusFieldtype::class,
+        \PublishPhp\StatamicStandardSite\Fieldtypes\CollectionFieldtype::class,
     ];
 
     protected $tags = [
@@ -115,6 +116,23 @@ class ServiceProvider extends AddonServiceProvider
                                         'instructions' => 'When an entry is deleted, also delete the corresponding AT Protocol record.',
                                         'default' => true,
                                         'width' => 50,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'collections' => [
+                    'sections' => [
+                        [
+                            'display' => 'Collection Sync',
+                            'instructions' => 'Enable or disable Standard Site syncing for each collection. Only enabled collections will have their published entries synced to the AT Protocol.',
+                            'fields' => [
+                                [
+                                    'handle' => 'collections_manager',
+                                    'field' => [
+                                        'type' => 'standard-site-collections',
+                                        'display' => 'Collections',
                                     ],
                                 ],
                             ],

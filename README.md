@@ -35,7 +35,8 @@ After installation, go to **CP → Settings → Standard Site** to configure you
 3. Enter your handle and app password
 4. Click **"Check for existing publications"** to discover any existing records
 5. Select an existing publication or create a new one
-6. Add the Standard Site section to your collection blueprint (coming in next release)
+6. Go to **Settings → Standard Site → Collections** tab and enable syncing for the collections you want
+7. Add the verification tag to your template `<head>` (see below)
 
 ## Verification
 

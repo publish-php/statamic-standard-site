@@ -33,6 +33,12 @@ class SyncOnEntrySaved
             return;
         }
 
+        // Only sync entries in collections that have opted in
+        $collection = $entry->collection();
+        if (! $collection || ! $collection->cascade()->get('standard_site_enabled', false)) {
+            return;
+        }
+
         $result = $this->syncManager->sync($entry);
 
         if ($result->success) {
