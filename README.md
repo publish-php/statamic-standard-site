@@ -123,6 +123,63 @@ own standalone `![alt](url)` image alongside the video's link.
 If a `poster`-handled image has no video or audio in the same set to attach to,
 it falls back to rendering as a normal image (it is never silently dropped).
 
+### Cover / feature images (auto-detected)
+
+> **⚠️ Convention alert — this reads a *separate* field by handle and injects
+> it into your content body.**
+
+Cover / feature images almost always live in their **own blueprint field**
+(e.g. `cover`, `feature_image`), *outside* the `content` field. That field is
+not part of the content body, so on its own it never reaches the document — and
+that causes a subtle bug in how covers are chosen.
+
+**Why this needs a little magic.** The `site.standard.document` lexicon *does*
+have a dedicated `coverImage` field, but the dominant reader (Standard Reader)
+does **not** use it first. It derives the hero/cover image from the **first
+image block of the content body**, and only falls back to `coverImage` when the
+body has no leading image. So without help, an early in-body image gets promoted
+to the cover while your real cover image is missing entirely.
+
+To fix this, the addon **auto-detects your cover field and prepends it as the
+first block of the Markdown content** (and leads `textContent` with its alt
+text):
+
+```markdown
+![Cover alt](https://cdn.example.com/cover.jpg)
+
+…your content body…
+```
+
+The real cover then becomes the hero **everywhere** — including image-first
+content like talk recordings — and any early body image is demoted to normal
+body flow instead of being mistaken for the cover.
+
+**Detection.** The override field `standard_site_cover_image` wins if present;
+otherwise the first of these handles that exists on the blueprint and has a
+value is used:
+
+`cover`, `cover_image`, `feature_image`, `featured_image`, `hero`, `hero_image`,
+`banner`, `og_image`, `thumbnail`
+
+(The bare `image` handle is deliberately **not** matched — too ambiguous. Use
+the `standard_site_cover_image` override to point at a non-standard handle.) The
+field is read through Statamic augmentation, so an `assets` field resolves to a
+fully-qualified URL on any driver. To opt out, rename the field so it doesn't
+match one of the handles above.
+
+**Why prepend to the body instead of the `coverImage` blob field?** Two reasons:
+
+1. Standard Reader prioritizes a leading body image over `coverImage`, so
+   setting the blob would not fix image-first content anyway.
+2. Populating *both* a leading body image and the `coverImage` blob risks other
+   consumers rendering the cover **twice**.
+
+Prepending keeps a single source of truth that matches how the reader actually
+picks the hero. This is a deliberately conservative choice for a young lexicon:
+it does not alter the original form of your content, and if the ecosystem
+converges on different behavior, the approach can change and documents can simply
+be re-synced.
+
 ### Set field handling
 
 Each field inside a Bard set is resolved through its real Statamic fieldtype, so
