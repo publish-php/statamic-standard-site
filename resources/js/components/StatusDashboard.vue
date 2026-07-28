@@ -62,11 +62,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, getCurrentInstance } from 'vue';
+import { Fieldtype } from '@statamic/cms';
 import { Button } from '@statamic/cms/ui';
-import { getCurrentInstance } from 'vue';
 
 const { $axios } = getCurrentInstance().appContext.config.globalProperties;
+
+const props = defineProps(Fieldtype.props);
+const { expose } = Fieldtype.use({}, props);
+defineExpose(expose);
 
 const loading = ref(false);
 const hasLoaded = ref(false);
@@ -78,7 +82,7 @@ const errors = ref([]);
 // Load sync errors on mount (for the badge)
 onMounted(async () => {
     try {
-        const response = await $axios.get('/cp/standard-site/status/errors');
+        const response = await $axios.get(props.meta.errors_url);
         errorCount.value = response.data.count || 0;
         errors.value = response.data.errors || [];
     } catch (err) {
@@ -90,7 +94,7 @@ async function loadDocuments() {
     loading.value = true;
     error.value = null;
     try {
-        const response = await $axios.get('/cp/standard-site/status/documents');
+        const response = await $axios.get(props.meta.documents_url);
         if (response.data.success) {
             documents.value = response.data.documents || [];
         } else {

@@ -20,6 +20,9 @@ class StatusFieldtype extends Fieldtype
 
     public function preload(): array
     {
-        return [];
+        return [
+            'errors_url' => cp_route('standard-site.status.errors'),
+            'documents_url' => cp_route('standard-site.status.documents'),
+        ];
     }
 }

@@ -69,8 +69,8 @@ class SyncOnEntrySaved
             return;
         }
 
-        // Throttle: only send if there are no existing unread errors
-        // (first failure since the settings page was last viewed)
+        // Throttle: only send on the first failure (count == 1 after record())
+        // Subsequent failures are skipped until the settings page clears the store
         if ($this->errorStore->count() > 1) {
             return;
         }
