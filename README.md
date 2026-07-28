@@ -54,6 +54,66 @@ Add this tag to your template's `<head>`:
 
 This outputs the `<link rel="site.standard.document">` tag for the current entry.
 
+## Content conversion
+
+The `content` field is converted to [`at.markpub.markdown`](https://markpub.at)
+for the document's `content` union, plus a plaintext `textContent`. Bard fields
+(including Bard **sets**) are supported.
+
+### Assets resolve to absolute URLs
+
+Any asset referenced in your content — inline Bard images, or `assets` fields
+inside a Bard set — is resolved to a **fully-qualified absolute URL** via
+Statamic's own asset container configuration. This works for every driver
+(local disk, S3, Scaleway, custom CDN) with no configuration. External readers
+(e.g. Standard Reader) can therefore load your media directly.
+
+### Media that Markdown can't represent falls back to HTML
+
+Markdown has no native syntax for video or audio. Since CommonMark permits raw
+HTML, such assets are emitted as HTML embeds that renderers preserve:
+
+- **Images** → `![alt](url)`
+- **Video** → `<video controls>…</video>`
+- **Audio** → `<audio controls>…</audio>`
+- **Other files** → `[label](url)` link
+
+This is a general rule keyed off the asset's media type, not a special case for
+any particular set — any non-Markdown-representable asset uses the HTML fallback.
+
+### The `poster` convention (video/audio poster frames)
+
+> **⚠️ Convention alert — this changes output based on a field handle.**
+
+Within a single Bard set, if an **image** asset's field **handle contains
+`poster`** (e.g. `poster`, `video_poster`), it is treated as the poster frame
+for a video/audio asset in the same set. It is rendered as that media element's
+`poster` attribute and is **not** emitted as a standalone image:
+
+```html
+<video controls poster="https://cdn.example.com/slide_poster.jpg">
+  <source src="https://cdn.example.com/slide.mp4" type="video/mp4">
+</video>
+```
+
+**To opt out** of this behavior, rename the field handle so it does **not**
+contain `poster` (e.g. `thumbnail`, `still`). The image will then render as its
+own standalone `![alt](url)` image alongside the video.
+
+If a `poster`-handled image has no video or audio in the same set to attach to,
+it falls back to rendering as a normal image (it is never silently dropped).
+
+### Set field handling
+
+Each field inside a Bard set is resolved through its real Statamic fieldtype, so
+this works for **any** set blueprint — nothing is hardwired to specific field
+names (aside from the documented `poster` convention above):
+
+- `assets` fields → resolved asset URL(s) with media-type dispatch (above)
+- Nested `bard` fields (e.g. a slide description) → rendered as Markdown at full
+  fidelity
+- Text/textarea/markdown fields → included as text
+
 ## License
 
 MIT
