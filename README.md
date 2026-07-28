@@ -70,21 +70,35 @@ Statamic's own asset container configuration. This works for every driver
 
 ### Media that Markdown can't represent renders as pure Markdown
 
-Markdown has no native syntax for video or audio. Raw HTML embeds
-(`<video>`/`<audio>`) are **not** used: the most popular Standard.Site reader
-(Standard Reader) strips raw HTML, so a native player would render as nothing.
-Instead, media falls back to constructs that render everywhere images and links
-render:
+Markdown has no native syntax for video or audio, and raw HTML embeds
+(`<video>`/`<audio>`) don't survive: the most popular Standard.Site reader
+(Standard Reader) doesn't render Markdown as generic HTML — it parses each block
+into AT Protocol's facet-based richtext model, where a block survives only if it
+has non-empty text (like a link) or is a **standalone image**. An image wrapped
+in a link contributes no text, so a "clickable poster"
+(`[![alt](poster)](media)`) collapses to an empty block and is dropped entirely.
+
+So media falls back to constructs that the reader's model actually keeps:
 
 - **Images** → `![alt](url)`
-- **Video / audio _with_ a poster** → a clickable poster frame:
-  `[![alt](poster_url)](media_url)` (an ordinary Markdown image wrapped in a
-  link — tapping the poster opens the media file)
+- **Video / audio _with_ a poster** → the poster as a standalone image,
+  followed by a separate labelled link to the media:
+
+  ```markdown
+  ![alt](poster_url)
+
+  [label](media_url)
+  ```
+
 - **Video / audio _without_ a poster** → a plain link `[label](media_url)`
 - **Other files** → `[label](url)` link
 
 This is a general rule keyed off the asset's media type, not a special case for
 any particular set.
+
+The link **label** is the media asset's alt text when present; when it's empty
+(common for talk media) it defaults to `Watch the video` / `Listen to the audio`
+— a link with no label is itself empty text and would be dropped by the reader.
 
 ### The `poster` convention (video/audio poster frames)
 
@@ -92,18 +106,19 @@ any particular set.
 
 Within a single Bard set, if an **image** asset's field **handle contains
 `poster`** (e.g. `poster`, `video_poster`), it is treated as the poster frame
-for a video/audio asset in the same set. It becomes the **clickable poster** of
-that media's link and is **not** emitted as a standalone image:
+for a video/audio asset in the same set. It is rendered as that media's
+standalone poster image (immediately above the media's link) rather than as a
+separate image elsewhere in the set:
 
 ```markdown
-[![A talk slide](https://cdn.example.com/slide_poster.jpg)](https://cdn.example.com/slide.mp4)
-```
+![A talk slide](https://cdn.example.com/slide_poster.jpg)
 
-The link text is the **media** asset's alt text (not the poster's).
+[A talk slide](https://cdn.example.com/slide.mp4)
+```
 
 **To opt out** of this behavior, rename the field handle so it does **not**
 contain `poster` (e.g. `thumbnail`, `still`). The image will then render as its
-own standalone `![alt](url)` image alongside the video's plain link.
+own standalone `![alt](url)` image alongside the video's link.
 
 If a `poster`-handled image has no video or audio in the same set to attach to,
 it falls back to rendering as a normal image (it is never silently dropped).

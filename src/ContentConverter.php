@@ -624,8 +624,9 @@ class ContentConverter
      *
      * Convention (documented in README): within a single set, an image asset
      * whose field handle contains "poster" is treated as the poster frame for a
-     * preceding/following video (or audio) asset. It becomes the clickable
-     * poster of that media's link and is NOT emitted as a standalone image.
+     * preceding/following video (or audio) asset. It is rendered as the media's
+     * standalone poster image (above its link) and NOT as a separate image
+     * elsewhere in the set.
      *
      * @param list<array<string,mixed>> $descriptors
      * @return string
@@ -669,7 +670,7 @@ class ContentConverter
         $markdown = '';
         foreach ($descriptors as $i => $d) {
             if ($i === $posterIndex) {
-                continue; // consumed as the media's clickable poster
+                continue; // consumed as the media's standalone poster image
             }
 
             $markdown .= match ($d['kind']) {
@@ -706,36 +707,54 @@ class ContentConverter
 
         return match ($d['media']) {
             'image' => "![{$alt}]({$url})\n\n",
-            'video', 'audio' => $this->renderMediaLink($url, $poster, $alt),
+            'video', 'audio' => $this->renderMediaLink((string) $d['media'], $url, $poster, $alt),
             default => $this->renderFileLink($url, $alt),
         };
     }
 
     /**
-     * Render a video/audio asset as pure Markdown that renders everywhere.
+     * Render a video/audio asset as pure Markdown that Standard.Site readers
+     * actually display.
      *
-     * Markdown has no native video/audio syntax, and raw HTML embeds are
-     * stripped by the most popular Standard.Site reader (Standard Reader), so a
-     * `<video>`/`<audio>` element would render as nothing. Instead:
+     * The dominant reader (Standard Reader) does NOT render Markdown as generic
+     * HTML — it parses each block into AT Protocol's facet-based richtext model.
+     * A block survives only if it carries non-empty plaintext (e.g. a text link)
+     * or is a standalone image. An image wrapped in a link contributes no
+     * plaintext, so `[![alt](poster)](media)` collapses to an empty paragraph
+     * and is dropped entirely — a "clickable poster" renders as nothing. So:
      *
-     * - With a poster image → a clickable poster frame:
-     *   `[![alt](poster_url)](media_url)`. This is an ordinary Markdown image
-     *   wrapped in a link, so it renders anywhere images do; tapping it opens
-     *   the media file.
-     * - Without a poster → a plain Markdown link `[label](media_url)`.
+     * - With a poster → the poster as a standalone image block, then a separate
+     *   labelled link to the media on its own line:
      *
+     *       ![alt](poster_url)
+     *
+     *       [label](media_url)
+     *
+     * - Without a poster → just the labelled link `[label](media_url)`.
+     *
+     * The link label is the asset's alt when present, otherwise a
+     * media-appropriate default — a link with an empty label is itself empty
+     * plaintext and would likewise be dropped.
+     *
+     * @param string $media 'video' or 'audio'.
      * @param string $url The media asset URL.
      * @param string|null $poster Optional poster image URL.
-     * @param string $alt Alt/label text describing the media.
+     * @param string $alt Alt text describing the media (may be empty).
      * @return string
      */
-    private function renderMediaLink(string $url, ?string $poster, string $alt): string
+    private function renderMediaLink(string $media, string $url, ?string $poster, string $alt): string
     {
+        $label = $alt !== ''
+            ? $alt
+            : ($media === 'audio' ? 'Listen to the audio' : 'Watch the video');
+
+        $link = "[{$label}]({$url})\n\n";
+
         if ($poster !== null) {
-            return "[![{$alt}]({$poster})]({$url})\n\n";
+            return "![{$alt}]({$poster})\n\n" . $link;
         }
 
-        return $this->renderFileLink($url, $alt);
+        return $link;
     }
 
     private function renderFileLink(string $url, string $alt): string
