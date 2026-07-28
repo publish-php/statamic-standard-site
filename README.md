@@ -19,6 +19,7 @@ Built on top of [`publish-php/atproto-standard-site`](https://github.com/publish
 - **Multi-site / localization:** Only the origin entry is synced to the AT Protocol. Localized entries are not synced independently, and deleting the origin entry does not cascade to delete localized AT Protocol records. Multi-site support is planned for a future release.
 - **Drafts:** Only published entries are synced. The AT Protocol is currently 100% public — drafts are never published to the PDS.
 - **Content source:** The content field is determined by convention (the field with handle `content`). Per-entry content override is not supported at this time.
+- **Collection opt-in:** Syncing must be enabled per collection via the `standard_site_enabled: true` inject config. There is no CP UI toggle for this yet — it's configured in the collection's YAML file.
 
 ## Installation
 
@@ -35,7 +36,16 @@ After installation, go to **CP → Settings → Standard Site** to configure you
 3. Enter your handle and app password
 4. Click **"Check for existing publications"** to discover any existing records
 5. Select an existing publication or create a new one
-6. Add the Standard Site section to your collection blueprint (coming in next release)
+6. Enable syncing for a collection by adding `standard_site_enabled: true` to its inject config:
+
+```yaml
+# content/collections/blog.yaml
+title: Blog
+inject:
+  standard_site_enabled: true
+```
+
+7. Add the verification tag to your template `<head>` (see below)
 
 ## Verification
 

@@ -33,6 +33,11 @@ class SyncOnEntrySaved
             return;
         }
 
+        // Only sync entries in collections that have opted in
+        if (! $this->isCollectionEnabled($entry)) {
+            return;
+        }
+
         $result = $this->syncManager->sync($entry);
 
         if ($result->success) {
@@ -59,6 +64,17 @@ class SyncOnEntrySaved
             // Email notification (throttled — first failure only)
             $this->sendFailureEmail($entry, $error);
         }
+    }
+
+    private function isCollectionEnabled($entry): bool
+    {
+        $collection = $entry->collection();
+        if (! $collection) {
+            return false;
+        }
+
+        // Check the collection's cascade (inject) data for the opt-in flag
+        return (bool) $collection->cascade()->get('standard_site_enabled', false);
     }
 
     private function sendFailureEmail($entry, string $error): void
