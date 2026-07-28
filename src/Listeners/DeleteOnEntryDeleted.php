@@ -24,6 +24,12 @@ class DeleteOnEntryDeleted
             return;
         }
 
+        // Only delete records for entries in collections that had opted in
+        $collection = $event->entry->collection();
+        if (! $collection || ! $collection->cascade()->get('standard_site_enabled', false)) {
+            return;
+        }
+
         $result = $this->syncManager->delete($event->entry);
 
         if ($result->success) {

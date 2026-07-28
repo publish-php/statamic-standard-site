@@ -74,7 +74,7 @@
         <ErrorMessage v-if="error" :text="error" />
 
         <!-- Success message -->
-        <p v-if="success" class="text-sm font-medium text-green-700 dark:text-green-400">
+        <p v-if="success" class="text-sm font-medium text-green-700 dark:text-green-400 break-all">
             {{ success }}
         </p>
 

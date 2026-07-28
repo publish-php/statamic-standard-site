@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PublishPhp\StatamicStandardSite;
 
+use Statamic\Facades\CP\Nav;
 use Statamic\Providers\AddonServiceProvider;
 
 class ServiceProvider extends AddonServiceProvider
@@ -16,6 +17,7 @@ class ServiceProvider extends AddonServiceProvider
     protected $fieldtypes = [
         \PublishPhp\StatamicStandardSite\Fieldtypes\PublicationManagerFieldtype::class,
         \PublishPhp\StatamicStandardSite\Fieldtypes\StatusFieldtype::class,
+        \PublishPhp\StatamicStandardSite\Fieldtypes\CollectionFieldtype::class,
     ];
 
     protected $tags = [
@@ -32,6 +34,14 @@ class ServiceProvider extends AddonServiceProvider
 
     public function bootAddon(): void
     {
+        // Register a top-level nav item in the Tools section
+        // so Standard Site isn't buried under Tools → Addons
+        Nav::extend(function ($nav) {
+            $nav->tools('Standard Site')
+                ->url(cp_route('addons.settings', $this->getAddon()->slug()))
+                ->icon('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>');
+        });
+
         $this->registerSettingsBlueprint([
             'tabs' => [
                 'credentials' => [
@@ -115,6 +125,23 @@ class ServiceProvider extends AddonServiceProvider
                                         'instructions' => 'When an entry is deleted, also delete the corresponding AT Protocol record.',
                                         'default' => true,
                                         'width' => 50,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'collections' => [
+                    'sections' => [
+                        [
+                            'display' => 'Collection Sync',
+                            'instructions' => 'Enable or disable Standard Site syncing for each collection. Only enabled collections will have their published entries synced to the AT Protocol.',
+                            'fields' => [
+                                [
+                                    'handle' => 'collections_manager',
+                                    'field' => [
+                                        'type' => 'standard-site-collections',
+                                        'display' => 'Collections',
                                     ],
                                 ],
                             ],
