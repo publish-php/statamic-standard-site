@@ -176,14 +176,24 @@ class SyncManager
 
     /**
      * Check if an API error indicates the record was not found.
+     *
+     * Uses the structured XRPC error type from the AT Protocol response
+     * (per https://atproto.com/specs/xrpc#error-responses). The
+     * com.atproto.repo.getRecord lexicon defines the error name as
+     * "RecordNotFound". Falls back to HTTP status code if the error
+     * type is missing (some PDS implementations may not include it).
+     *
+     * @see https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/repo/getRecord.json
      */
     private function isNotFoundError(ApiErrorException $e): bool
     {
-        $message = strtolower($e->getMessage());
-        return str_contains($message, 'not found')
-            || str_contains($message, 'could not find')
-            || str_contains($message, 'could not locate')
-            || str_contains($message, 'does not exist')
-            || $e->getCode() === 404;
+        // The AT Protocol returns a structured error type in the response.
+        // getRecord defines: { "errors": [{ "name": "RecordNotFound" }] }
+        if ($e->errorType !== null) {
+            return strtolower($e->errorType) === 'recordnotfound';
+        }
+
+        // Fallback: HTTP 400 is returned for missing records by most PDS implementations
+        return $e->getCode() === 400;
     }
 }
