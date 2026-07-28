@@ -89,7 +89,7 @@ class EntryMapper
         }
 
         $value = $entry->get('content');
-        $markdown = $this->converter->toMarkdown($value);
+        $markdown = $this->converter->toMarkdown($value, $this->setResolverFor($blueprint));
 
         if ($markdown === '') {
             return null;
@@ -118,9 +118,33 @@ class EntryMapper
         }
 
         $value = $entry->get('content');
-        $text = $this->converter->toTextContent($value);
+        $text = $this->converter->toTextContent($value, $this->setResolverFor($blueprint));
 
         return $text !== '' ? $text : null;
+    }
+
+    /**
+     * Build a per-entry Bard set resolver bound to the `content` field's
+     * configured set blueprint, or null when the content field is not a Bard
+     * field (Markdown/other fieldtypes have no sets to resolve).
+     *
+     * The resolver flattens a set's fields through Statamic's own augmentation
+     * so asset fields become absolute URLs with a known media kind — convention
+     * aware, not hardwired to any particular blueprint. See {@see SetContentResolver}.
+     *
+     * @return callable|null fn(string $setType, array $values, int $index): list<array>
+     */
+    private function setResolverFor(Blueprint $blueprint): ?callable
+    {
+        $field = $blueprint->field('content');
+        if ($field === null || $field->type() !== 'bard') {
+            return null;
+        }
+
+        $resolver = new SetContentResolver($field->fieldtype());
+
+        return static fn (string $setType, array $values, int $index): array
+            => $resolver->resolve($setType, $values, $index);
     }
 
     private function resolvePath(Entry $entry, Blueprint $blueprint): ?string

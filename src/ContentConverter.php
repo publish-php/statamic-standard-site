@@ -28,6 +28,21 @@ class ContentConverter
      *   Example ref: 'asset::assets::posts/image.png'
      *   If null, asset references are passed through as-is.
      */
+    /**
+     * Per-call resolver for Bard set fields.
+     *
+     * Set by {@see toMarkdown()} / {@see toTextContent()} for the duration of a
+     * single conversion. Signature:
+     *   fn(string $setType, array $values, int $index): list<array>  // descriptors
+     * See {@see SetContentResolver} for the descriptor contract. Null means no
+     * resolver (unit tests, or content without asset-bearing sets) — the
+     * converter falls back to generic text flattening and never emits a raw
+     * asset path.
+     *
+     * @var callable|null
+     */
+    private $setResolver = null;
+
     public function __construct(
         private readonly array $excludedSets = [],
         private readonly mixed $assetUrlResolver = null,
@@ -39,13 +54,18 @@ class ContentConverter
      * Accepts Bard JSON (with or without sets), HTML strings, or plain Markdown.
      *
      * @param mixed $value The raw field value from Statamic
+     * @param callable|null $setResolver Resolves a Bard set's fields to
+     *   descriptors (see {@see SetContentResolver}). Entry-specific, so it is
+     *   passed per-call rather than injected in the constructor.
      * @return string Markdown text
      */
-    public function toMarkdown(mixed $value): string
+    public function toMarkdown(mixed $value, ?callable $setResolver = null): string
     {
         if ($value === null || $value === '') {
             return '';
         }
+
+        $this->setResolver = $setResolver;
 
         // If it's already a string, it could be HTML (Bard "save as HTML" mode)
         // or Markdown (Markdown fieldtype passthrough).
@@ -70,13 +90,17 @@ class ContentConverter
      * Strips all formatting — no Markdown, no HTML tags.
      *
      * @param mixed $value The raw field value from Statamic
+     * @param callable|null $setResolver Resolves a Bard set's fields to
+     *   descriptors (see {@see SetContentResolver}).
      * @return string Plaintext
      */
-    public function toTextContent(mixed $value): string
+    public function toTextContent(mixed $value, ?callable $setResolver = null): string
     {
         if ($value === null || $value === '') {
             return '';
         }
+
+        $this->setResolver = $setResolver;
 
         if (is_string($value)) {
             if ($this->looksLikeHtml($value)) {
@@ -110,13 +134,15 @@ class ContentConverter
         }
 
         // Check if this is a flat array of ProseMirror block nodes
-        // (Statamic's "no sets" Bard format — array of paragraph, heading, etc.)
+        // (Statamic's on-disk Bard format — array of paragraph, heading, set, etc.).
+        // Sets appear as `type: set` items interspersed with regular block nodes,
+        // so `set` is a valid top-level type here.
         if (isset($bard[0]) && is_array($bard[0]) && isset($bard[0]['type'])) {
             $firstType = $bard[0]['type'];
             $isProseMirrorNodes = in_array($firstType, [
                 'paragraph', 'heading', 'bulletList', 'orderedList',
                 'blockquote', 'codeBlock', 'horizontalRule', 'table',
-                'hardBreak', 'image',
+                'hardBreak', 'image', 'set',
             ], true);
 
             if ($isProseMirrorNodes) {
@@ -139,12 +165,10 @@ class ContentConverter
                 $html = $item['text'] ?? '';
                 $markdown .= $this->htmlToMarkdown($html);
             } elseif ($type === 'set') {
-                // Set content — has "attrs" with "values" containing the set's fields
-                $setHandle = $item['attrs']['values']['type'] ?? $item['attrs']['type'] ?? '';
-                if (in_array($setHandle, $this->excludedSets, true)) {
-                    continue;
-                }
-                $markdown .= $this->renderSet($item, setHandle: $setHandle);
+                // Set content — has "attrs" with "values" containing the set's fields.
+                // Route through the node renderer so asset/media resolution and the
+                // poster convention apply uniformly (exclusion is handled there too).
+                $markdown .= $this->renderSetNode($item);
             }
         }
 
@@ -163,13 +187,14 @@ class ContentConverter
             return $this->renderNodesTextContent($bard['content']);
         }
 
-        // Flat array of ProseMirror block nodes (Statamic's "no sets" format)
+        // Flat array of ProseMirror block nodes (Statamic's on-disk format,
+        // with sets interspersed as `type: set` items).
         if (isset($bard[0]) && is_array($bard[0]) && isset($bard[0]['type'])) {
             $firstType = $bard[0]['type'];
             $isProseMirrorNodes = in_array($firstType, [
                 'paragraph', 'heading', 'bulletList', 'orderedList',
                 'blockquote', 'codeBlock', 'horizontalRule', 'table',
-                'hardBreak', 'image',
+                'hardBreak', 'image', 'set',
             ], true);
 
             if ($isProseMirrorNodes) {
@@ -177,6 +202,7 @@ class ContentConverter
             }
         }
 
+        // Legacy "text + HTML" fallback format.
         $text = '';
         foreach ($bard as $item) {
             if (!is_array($item)) {
@@ -189,11 +215,7 @@ class ContentConverter
                 $html = $item['text'] ?? '';
                 $text .= strip_tags($this->decodeHtmlEntities($html));
             } elseif ($type === 'set') {
-                $setHandle = $item['attrs']['values']['type'] ?? $item['attrs']['type'] ?? '';
-                if (in_array($setHandle, $this->excludedSets, true)) {
-                    continue;
-                }
-                $text .= $this->renderSetTextContent($item);
+                $text .= $this->renderSetNodeTextContent($item);
             }
         }
 
@@ -242,6 +264,7 @@ class ContentConverter
             'table' => $this->renderTable($content),
             'hardBreak', 'hard_break' => "  \n",
             'text' => $this->renderTextWithMarks($text, $marks),
+            'set' => $this->renderSetNode($node),
             default => $this->renderInlineContent($content),
         };
     }
@@ -490,6 +513,7 @@ class ContentConverter
             'table' => $this->renderTableTextContent($content),
             'hardBreak', 'hard_break' => "\n",
             'text' => $text,
+            'set' => $this->renderSetNodeTextContent($node),
             default => $this->renderInlineTextContent($content),
         };
     }
@@ -562,65 +586,309 @@ class ContentConverter
     }
 
     /**
-     * Render a Bard set to Markdown.
+     * Render a Bard `set` node to Markdown.
      *
-     * Sets contain arbitrary field data. We attempt to flatten known field types
-     * to their Markdown representation, and fall back to a descriptive placeholder
-     * for unrecognized set types.
+     * When a set resolver is available (production), each set field is resolved
+     * through Statamic's own augmentation into framework-agnostic descriptors —
+     * so `assets` fields become fully-qualified URLs with a known media kind,
+     * and nested Bard fields come back as raw ProseMirror for high-fidelity
+     * rendering. Without a resolver (unit tests, or content lacking asset-bearing
+     * sets), it falls back to generic flattening of the raw values.
      *
-     * @param array<mixed> $set
-     * @param string $setHandle
+     * @param array<mixed> $node A `{type: set, attrs: {id, values}}` node.
      * @return string
      */
-    private function renderSet(array $set, string $setHandle): string
+    private function renderSetNode(array $node): string
     {
-        $values = $set['attrs']['values'] ?? $set['attrs'] ?? [];
+        $values = $node['attrs']['values'] ?? [];
+        $setType = (string) ($values['type'] ?? $node['attrs']['type'] ?? '');
 
-        // Remove the internal 'type' key from values
-        unset($values['type']);
+        if ($setType !== '' && in_array($setType, $this->excludedSets, true)) {
+            return '';
+        }
 
-        $markdown = '';
-        foreach ($values as $handle => $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
-            $fieldMarkdown = $this->toMarkdown($value);
-            if ($fieldMarkdown) {
-                $markdown .= $fieldMarkdown . "\n\n";
+        $index = $this->setIndexFromNode($node);
+        $descriptors = $this->resolveSetDescriptors($setType, $values, $index);
+
+        if ($descriptors !== null) {
+            return $this->renderSetDescriptors($descriptors);
+        }
+
+        // Fallback: no resolver — flatten raw values generically.
+        return $this->renderSetRawFallback($values, $setType);
+    }
+
+    /**
+     * Render resolved set descriptors to Markdown, applying the poster→video
+     * association convention.
+     *
+     * Convention (documented in README): within a single set, an image asset
+     * whose field handle contains "poster" is treated as the poster frame for a
+     * preceding/following video (or audio) asset. It is rendered as the media
+     * element's `poster` attribute and NOT emitted as a standalone image.
+     *
+     * @param list<array<string,mixed>> $descriptors
+     * @return string
+     */
+    private function renderSetDescriptors(array $descriptors): string
+    {
+        // First pass: find a poster image (handle contains "poster") and the
+        // media (video/audio) descriptor it should attach to.
+        $posterIndex = null;
+        $posterUrl = null;
+        foreach ($descriptors as $i => $d) {
+            if (($d['kind'] ?? '') === 'asset'
+                && ($d['media'] ?? '') === 'image'
+                && str_contains(strtolower((string) $d['handle']), 'poster')
+            ) {
+                $posterIndex = $i;
+                $posterUrl = $d['url'];
+                break;
             }
         }
 
-        if ($markdown === '') {
-            // Fallback: descriptive placeholder for unrepresentable sets
-            $markdown = "<!-- set: {$setHandle} -->\n\n";
+        $attachPosterTo = null;
+        if ($posterIndex !== null) {
+            foreach ($descriptors as $i => $d) {
+                if (($d['kind'] ?? '') === 'asset'
+                    && in_array($d['media'] ?? '', ['video', 'audio'], true)
+                ) {
+                    $attachPosterTo = $i;
+                    break;
+                }
+            }
+        }
+
+        // If there is no media element to attach the poster to, keep the poster
+        // as a normal image rather than dropping it silently.
+        if ($attachPosterTo === null) {
+            $posterIndex = null;
+            $posterUrl = null;
+        }
+
+        $markdown = '';
+        foreach ($descriptors as $i => $d) {
+            if ($i === $posterIndex) {
+                continue; // consumed as a poster attribute
+            }
+
+            $markdown .= match ($d['kind']) {
+                'asset' => $this->renderAssetDescriptor(
+                    $d,
+                    poster: $i === $attachPosterTo ? $posterUrl : null,
+                ),
+                'bard' => $this->bardToMarkdown($d['value']) . "\n\n",
+                'text' => $this->toMarkdown($d['value']) . "\n\n",
+                default => '',
+            };
         }
 
         return $markdown;
     }
 
     /**
-     * Render a Bard set to plaintext.
+     * Render a single asset descriptor to Markdown.
      *
-     * @param array<mixed> $set
+     * - image → Markdown image `![alt](url)`
+     * - video/audio → HTML embed (Markdown cannot represent these; per the
+     *   markpub spec raw HTML in CommonMark is preserved by renderers)
+     * - file/other → Markdown link
+     *
+     * @param array<string,mixed> $d
+     * @param string|null $poster Optional poster URL for video/audio.
      * @return string
      */
-    private function renderSetTextContent(array $set): string
+    private function renderAssetDescriptor(array $d, ?string $poster = null): string
     {
-        $values = $set['attrs']['values'] ?? $set['attrs'] ?? [];
+        $url = (string) $d['url'];
+        $alt = (string) ($d['alt'] ?? '');
+
+        return match ($d['media']) {
+            'image' => "![{$alt}]({$url})\n\n",
+            'video' => $this->renderVideoEmbed($url, $poster, $d['mime'] ?? null, $alt),
+            'audio' => $this->renderAudioEmbed($url, $d['mime'] ?? null, $alt),
+            default => $this->renderFileLink($url, $alt),
+        };
+    }
+
+    private function renderVideoEmbed(string $url, ?string $poster, ?string $mime, string $alt): string
+    {
+        $posterAttr = $poster !== null ? ' poster="' . $this->escapeAttr($poster) . '"' : '';
+        $type = $mime ? ' type="' . $this->escapeAttr($mime) . '"' : '';
+        $fallback = $alt !== '' ? $this->escapeAttr($alt) : 'Your browser does not support the video tag.';
+
+        return '<video controls' . $posterAttr . '>'
+            . '<source src="' . $this->escapeAttr($url) . '"' . $type . '>'
+            . $fallback
+            . "</video>\n\n";
+    }
+
+    private function renderAudioEmbed(string $url, ?string $mime, string $alt): string
+    {
+        $type = $mime ? ' type="' . $this->escapeAttr($mime) . '"' : '';
+        $fallback = $alt !== '' ? $this->escapeAttr($alt) : 'Your browser does not support the audio tag.';
+
+        return '<audio controls>'
+            . '<source src="' . $this->escapeAttr($url) . '"' . $type . '>'
+            . $fallback
+            . "</audio>\n\n";
+    }
+
+    private function renderFileLink(string $url, string $alt): string
+    {
+        $label = $alt !== '' ? $alt : $url;
+        return "[{$label}]({$url})\n\n";
+    }
+
+    private function escapeAttr(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Generic fallback set flattening when no resolver is available.
+     *
+     * NOTE: this path intentionally does NOT emit asset field values — without
+     * the resolver we cannot turn a stored asset path into a usable URL, and
+     * emitting the bare path (the original bug) is worse than omitting it. Only
+     * string/markdown/HTML field values are flattened here.
+     *
+     * @param array<string,mixed> $values
+     * @param string $setType
+     * @return string
+     */
+    private function renderSetRawFallback(array $values, string $setType): string
+    {
         unset($values['type']);
 
-        $text = '';
+        $markdown = '';
         foreach ($values as $value) {
-            if ($value === null || $value === '') {
+            if ($value === null || $value === '' || $value === []) {
                 continue;
             }
-            $fieldText = $this->toTextContent($value);
-            if ($fieldText) {
-                $text .= $fieldText . "\n";
+            // Only render values the converter can represent without a resolver:
+            // raw ProseMirror arrays (nested Bard) and prose strings. Bare asset
+            // paths (e.g. "talks/x.mp4") cannot be resolved to a URL here, and
+            // emitting the raw path is the original bug — so skip them.
+            if (is_array($value)) {
+                $fieldMarkdown = $this->toMarkdown($value);
+                if ($fieldMarkdown !== '') {
+                    $markdown .= $fieldMarkdown . "\n\n";
+                }
+            } elseif (is_string($value) && ! $this->looksLikeAssetPath($value)) {
+                $fieldMarkdown = $this->toMarkdown($value);
+                if ($fieldMarkdown !== '') {
+                    $markdown .= $fieldMarkdown . "\n\n";
+                }
+            }
+        }
+
+        if ($markdown === '' && $setType !== '') {
+            $markdown = "<!-- set: {$setType} -->\n\n";
+        }
+
+        return $markdown;
+    }
+
+    /**
+     * Render a Bard `set` node to plaintext (textContent).
+     *
+     * Assets contribute their alt text (if any); nested Bard and text fields
+     * contribute their stripped text. Media embeds have no plaintext beyond alt.
+     *
+     * @param array<mixed> $node
+     * @return string
+     */
+    private function renderSetNodeTextContent(array $node): string
+    {
+        $values = $node['attrs']['values'] ?? [];
+        $setType = (string) ($values['type'] ?? $node['attrs']['type'] ?? '');
+
+        if ($setType !== '' && in_array($setType, $this->excludedSets, true)) {
+            return '';
+        }
+
+        $index = $this->setIndexFromNode($node);
+        $descriptors = $this->resolveSetDescriptors($setType, $values, $index);
+
+        if ($descriptors !== null) {
+            $text = '';
+            foreach ($descriptors as $d) {
+                $text .= match ($d['kind']) {
+                    'asset' => ($d['alt'] ?? '') !== '' ? $d['alt'] . "\n" : '',
+                    'bard' => $this->bardToTextContent($d['value']) . "\n",
+                    'text' => $this->toTextContent($d['value']) . "\n",
+                    default => '',
+                };
+            }
+            return $text;
+        }
+
+        // Fallback: flatten raw string/array values.
+        unset($values['type']);
+        $text = '';
+        foreach ($values as $value) {
+            if ($value === null || $value === '' || $value === []) {
+                continue;
+            }
+            if (is_array($value)) {
+                $fieldText = $this->toTextContent($value);
+                if ($fieldText !== '') {
+                    $text .= $fieldText . "\n";
+                }
+            } elseif (is_string($value) && ! $this->looksLikeAssetPath($value)) {
+                $fieldText = $this->toTextContent($value);
+                if ($fieldText !== '') {
+                    $text .= $fieldText . "\n";
+                }
             }
         }
 
         return $text;
+    }
+
+    /**
+     * Heuristic: does a bare string look like an unresolved asset path?
+     *
+     * Used ONLY in the no-resolver set fallback to avoid leaking raw stored
+     * paths (e.g. "talks/creative-web/slide.mp4") into output. Matches a
+     * single token with no whitespace that ends in a file extension. In
+     * production the resolver is always present, so this path is not exercised;
+     * it is a safety net for unit tests and legacy content.
+     */
+    private function looksLikeAssetPath(string $value): bool
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '' || preg_match('/\s/', $trimmed)) {
+            return false;
+        }
+
+        return (bool) preg_match('#^[\w\-./]+\.[A-Za-z0-9]{2,5}$#', $trimmed);
+    }
+
+    /**
+     * Resolve a set's descriptors via the per-call resolver, or null if none.
+     *
+     * @param array<string,mixed> $values
+     * @return list<array<string,mixed>>|null
+     */
+    private function resolveSetDescriptors(string $setType, array $values, int $index): ?array
+    {
+        if ($this->setResolver === null || $setType === '') {
+            return null;
+        }
+
+        $descriptors = ($this->setResolver)($setType, $values, $index);
+        return is_array($descriptors) ? $descriptors : null;
+    }
+
+    /**
+     * Best-effort positional index for a set node (used only for Statamic's
+     * field path hashing during augmentation). Any stable int works.
+     */
+    private function setIndexFromNode(array $node): int
+    {
+        return 0;
     }
 
     /**
