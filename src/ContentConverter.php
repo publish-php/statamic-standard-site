@@ -624,8 +624,8 @@ class ContentConverter
      *
      * Convention (documented in README): within a single set, an image asset
      * whose field handle contains "poster" is treated as the poster frame for a
-     * preceding/following video (or audio) asset. It is rendered as the media
-     * element's `poster` attribute and NOT emitted as a standalone image.
+     * preceding/following video (or audio) asset. It becomes the clickable
+     * poster of that media's link and is NOT emitted as a standalone image.
      *
      * @param list<array<string,mixed>> $descriptors
      * @return string
@@ -669,7 +669,7 @@ class ContentConverter
         $markdown = '';
         foreach ($descriptors as $i => $d) {
             if ($i === $posterIndex) {
-                continue; // consumed as a poster attribute
+                continue; // consumed as the media's clickable poster
             }
 
             $markdown .= match ($d['kind']) {
@@ -690,8 +690,9 @@ class ContentConverter
      * Render a single asset descriptor to Markdown.
      *
      * - image → Markdown image `![alt](url)`
-     * - video/audio → HTML embed (Markdown cannot represent these; per the
-     *   markpub spec raw HTML in CommonMark is preserved by renderers)
+     * - video/audio → pure Markdown (see {@see renderMediaLink}); NOT an HTML
+     *   embed. The most popular Standard.Site reader (Standard Reader) strips
+     *   raw HTML, so a native `<video>`/`<audio>` element renders as nothing.
      * - file/other → Markdown link
      *
      * @param array<string,mixed> $d
@@ -705,44 +706,42 @@ class ContentConverter
 
         return match ($d['media']) {
             'image' => "![{$alt}]({$url})\n\n",
-            'video' => $this->renderVideoEmbed($url, $poster, $d['mime'] ?? null, $alt),
-            'audio' => $this->renderAudioEmbed($url, $d['mime'] ?? null, $alt),
+            'video', 'audio' => $this->renderMediaLink($url, $poster, $alt),
             default => $this->renderFileLink($url, $alt),
         };
     }
 
-    private function renderVideoEmbed(string $url, ?string $poster, ?string $mime, string $alt): string
+    /**
+     * Render a video/audio asset as pure Markdown that renders everywhere.
+     *
+     * Markdown has no native video/audio syntax, and raw HTML embeds are
+     * stripped by the most popular Standard.Site reader (Standard Reader), so a
+     * `<video>`/`<audio>` element would render as nothing. Instead:
+     *
+     * - With a poster image → a clickable poster frame:
+     *   `[![alt](poster_url)](media_url)`. This is an ordinary Markdown image
+     *   wrapped in a link, so it renders anywhere images do; tapping it opens
+     *   the media file.
+     * - Without a poster → a plain Markdown link `[label](media_url)`.
+     *
+     * @param string $url The media asset URL.
+     * @param string|null $poster Optional poster image URL.
+     * @param string $alt Alt/label text describing the media.
+     * @return string
+     */
+    private function renderMediaLink(string $url, ?string $poster, string $alt): string
     {
-        $posterAttr = $poster !== null ? ' poster="' . $this->escapeAttr($poster) . '"' : '';
-        $type = $mime ? ' type="' . $this->escapeAttr($mime) . '"' : '';
-        $fallback = $alt !== '' ? $this->escapeAttr($alt) : 'Your browser does not support the video tag.';
+        if ($poster !== null) {
+            return "[![{$alt}]({$poster})]({$url})\n\n";
+        }
 
-        return '<video controls' . $posterAttr . '>'
-            . '<source src="' . $this->escapeAttr($url) . '"' . $type . '>'
-            . $fallback
-            . "</video>\n\n";
-    }
-
-    private function renderAudioEmbed(string $url, ?string $mime, string $alt): string
-    {
-        $type = $mime ? ' type="' . $this->escapeAttr($mime) . '"' : '';
-        $fallback = $alt !== '' ? $this->escapeAttr($alt) : 'Your browser does not support the audio tag.';
-
-        return '<audio controls>'
-            . '<source src="' . $this->escapeAttr($url) . '"' . $type . '>'
-            . $fallback
-            . "</audio>\n\n";
+        return $this->renderFileLink($url, $alt);
     }
 
     private function renderFileLink(string $url, string $alt): string
     {
         $label = $alt !== '' ? $alt : $url;
         return "[{$label}]({$url})\n\n";
-    }
-
-    private function escapeAttr(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
     }
 
     /**

@@ -68,18 +68,23 @@ Statamic's own asset container configuration. This works for every driver
 (local disk, S3, Scaleway, custom CDN) with no configuration. External readers
 (e.g. Standard Reader) can therefore load your media directly.
 
-### Media that Markdown can't represent falls back to HTML
+### Media that Markdown can't represent renders as pure Markdown
 
-Markdown has no native syntax for video or audio. Since CommonMark permits raw
-HTML, such assets are emitted as HTML embeds that renderers preserve:
+Markdown has no native syntax for video or audio. Raw HTML embeds
+(`<video>`/`<audio>`) are **not** used: the most popular Standard.Site reader
+(Standard Reader) strips raw HTML, so a native player would render as nothing.
+Instead, media falls back to constructs that render everywhere images and links
+render:
 
 - **Images** → `![alt](url)`
-- **Video** → `<video controls>…</video>`
-- **Audio** → `<audio controls>…</audio>`
+- **Video / audio _with_ a poster** → a clickable poster frame:
+  `[![alt](poster_url)](media_url)` (an ordinary Markdown image wrapped in a
+  link — tapping the poster opens the media file)
+- **Video / audio _without_ a poster** → a plain link `[label](media_url)`
 - **Other files** → `[label](url)` link
 
 This is a general rule keyed off the asset's media type, not a special case for
-any particular set — any non-Markdown-representable asset uses the HTML fallback.
+any particular set.
 
 ### The `poster` convention (video/audio poster frames)
 
@@ -87,18 +92,18 @@ any particular set — any non-Markdown-representable asset uses the HTML fallba
 
 Within a single Bard set, if an **image** asset's field **handle contains
 `poster`** (e.g. `poster`, `video_poster`), it is treated as the poster frame
-for a video/audio asset in the same set. It is rendered as that media element's
-`poster` attribute and is **not** emitted as a standalone image:
+for a video/audio asset in the same set. It becomes the **clickable poster** of
+that media's link and is **not** emitted as a standalone image:
 
-```html
-<video controls poster="https://cdn.example.com/slide_poster.jpg">
-  <source src="https://cdn.example.com/slide.mp4" type="video/mp4">
-</video>
+```markdown
+[![A talk slide](https://cdn.example.com/slide_poster.jpg)](https://cdn.example.com/slide.mp4)
 ```
+
+The link text is the **media** asset's alt text (not the poster's).
 
 **To opt out** of this behavior, rename the field handle so it does **not**
 contain `poster` (e.g. `thumbnail`, `still`). The image will then render as its
-own standalone `![alt](url)` image alongside the video.
+own standalone `![alt](url)` image alongside the video's plain link.
 
 If a `poster`-handled image has no video or audio in the same set to attach to,
 it falls back to rendering as a normal image (it is never silently dropped).
